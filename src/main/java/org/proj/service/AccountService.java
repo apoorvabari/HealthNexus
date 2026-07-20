@@ -10,10 +10,17 @@ import org.proj.dto.LoginResponse;
 public interface AccountService {
 
 	AccountResponse register(AccountRequest request);
+
 	AccountResponse getAccountById(Long id);
+
 	List<AccountResponse> getAllAccounts();
+
 	AccountResponse updateAccount(Long id, AccountRequest request);
+
 	void deleteAccount(Long id);
+
 	LoginResponse login(LoginRequest request);
+
+	List<AccountResponse> filterAccounts(Long id, String name, String email, String phoneNumber, String status);
 
 }

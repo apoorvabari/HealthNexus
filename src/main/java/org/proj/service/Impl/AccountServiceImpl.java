@@ -6,129 +6,191 @@ import org.proj.dto.AccountRequest;
 import org.proj.dto.AccountResponse;
 import org.proj.dto.LoginRequest;
 import org.proj.dto.LoginResponse;
-import org.proj.entity.Account;
+import org.proj.entity.AccountEntity;
+import org.proj.mapper.AccountMapper;
 import org.proj.repository.AccountRepo;
 import org.proj.service.AccountService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 @Service
 public class AccountServiceImpl implements AccountService {
 
-	@Autowired
-	private AccountRepo accountRepository;
+    @Autowired
+    private AccountRepo accountRepository;
 
-	@Override
-	public AccountResponse register(AccountRequest request) {
+    @Autowired
+    private PasswordEncoder passwordEncoder;
 
-		if (accountRepository.existsByEmail(request.getEmail())) {
-			throw new RuntimeException("Email already exists");
-		}
+    @Autowired
+    private AccountMapper accountMapper;
 
-		Account account = new Account();
+    @Override
+    public AccountResponse register(AccountRequest request) {
+        try {
+            if (accountRepository.existsByEmail(request.getEmail())) {
+                throw new IllegalArgumentException("Email already exists");
+            }
 
-		account.setName(request.getName());
-		account.setEmail(request.getEmail());
-		account.setPassword(request.getPassword());
-		account.setRole(request.getRole());
+            AccountEntity account = accountMapper.toEntity(request, passwordEncoder);
+            AccountEntity savedAccount = accountRepository.save(account);
 
-		Account savedAccount = accountRepository.save(account);
+            AccountResponse response = accountMapper.toResponse(savedAccount);
+            response.setMessage("Account registered successfully");
 
-		AccountResponse response = new AccountResponse();
+            return response;
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException("Unable to register account. Please try again.");
+        }
+    }
 
-		response.setId(savedAccount.getId());
-		response.setName(savedAccount.getName());
-		response.setEmail(savedAccount.getEmail());
-		response.setRole(savedAccount.getRole());
-		response.setMessage("Account registered successfully");
+    @Override
+    public AccountResponse getAccountById(Long id) {
+        try {
+            validateId(id);
+            AccountEntity account = accountRepository.findById(id)
+                    .orElseThrow(() -> new IllegalArgumentException("Account not found"));
 
-		return response;
-	}
+            return accountMapper.toResponse(account);
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException("Unable to fetch account.");
+        }
+    }
 
-	@Override
-	public AccountResponse getAccountById(Long id) {
+    @Override
+    public List<AccountResponse> getAllAccounts() {
+        try {
+            List<AccountEntity> accounts = accountRepository.findByIsActiveTrue();
+            
+            return accounts.stream()
+                    .map(accountMapper::toResponse)
+                    .toList();
+        } catch (Exception e) {
+            throw new RuntimeException("Unable to fetch account list.");
+        }
+    }
 
-	    Account account = accountRepository.findById(id)
-	            .orElseThrow(() -> new RuntimeException("Account not found"));
+    @Override
+    public AccountResponse updateAccount(Long id, AccountRequest request) {
+        try {
+            validateId(id);
+            AccountEntity account = accountRepository.findById(id)
+                    .orElseThrow(() -> new IllegalArgumentException("Account not found"));
 
-	    AccountResponse response = new AccountResponse();
+            if (request.getEmail() != null) {
+                String newEmail = request.getEmail().trim();
+                if (!account.getEmail().equalsIgnoreCase(newEmail) && accountRepository.existsByEmail(newEmail)) {
+                    throw new IllegalArgumentException("Email already exists");
+                }
+                account.setEmail(newEmail);
+            }
 
-	    response.setId(account.getId());
-	    response.setName(account.getName());
-	    response.setEmail(account.getEmail());
-	    response.setRole(account.getRole());
+            account.setFirstName(request.getFirstName());
+            account.setMiddleName(request.getMiddleName());
+            account.setLastName(request.getLastName());
+            account.setPassword(passwordEncoder.encode(request.getPassword()));
+            account.setRole(request.getRole() != null ? AccountEntity.Role.valueOf(request.getRole().trim().toUpperCase()) : null);
+            account.setPhoneNumber(request.getPhoneNumber());
 
-	    return response;
-	}
+            if (request.getIsActive() != null) {
+                account.setIsActive(request.getIsActive());
+            }
 
-	@Override
-	public List<AccountResponse> getAllAccounts() {
+            if (request.getIsDeleted() != null) {
+                account.setIsDeleted(request.getIsDeleted());
+            }
 
-	    List<Account> accounts = accountRepository.findAll();
+            AccountEntity updatedAccount = accountRepository.save(account);
 
-	    return accounts.stream().map(account -> {
+            AccountResponse response = accountMapper.toResponse(updatedAccount);
+            response.setMessage("Account updated successfully");
 
-	        AccountResponse response = new AccountResponse();
+            return response;
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException("Unable to update account.");
+        }
+    }
 
-	        response.setId(account.getId());
-	        response.setName(account.getName());
-	        response.setEmail(account.getEmail());
-	        response.setRole(account.getRole());
+    @Override
+    public void deleteAccount(Long id) {
+        try {
+            validateId(id);
+            AccountEntity account = accountRepository.findById(id)
+                    .orElseThrow(() -> new IllegalArgumentException("Account not found"));
 
-	        return response;
+            account.setIsDeleted(true);
+            account.setIsActive(false);
 
-	    }).toList();
-	}
+            accountRepository.save(account);
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException("Unable to delete account.");
+        }
+    }
 
-	@Override
-	public AccountResponse updateAccount(Long id, AccountRequest request) {
+    @Override
+    public LoginResponse login(LoginRequest request) {
+        try {
+            AccountEntity account = accountRepository.findByEmail(request.getEmail())
+                    .orElseThrow(() -> new IllegalArgumentException("Invalid email or password"));
 
-	    Account account = accountRepository.findById(id)
-	            .orElseThrow(() -> new RuntimeException("Account not found"));
+            if (!passwordEncoder.matches(request.getPassword(), account.getPassword())) {
+                throw new IllegalArgumentException("Invalid email or password");
+            }
 
-	    account.setName(request.getName());
-	    account.setEmail(request.getEmail());
-	    account.setRole(request.getRole());
+            LoginResponse response = new LoginResponse();
+            response.setMessage("Login Successful");
+            response.setRole(account.getRole() != null ? account.getRole().name() : null);
 
-	    Account updatedAccount = accountRepository.save(account);
+            return response;
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException("Unable to login.");
+        }
+    }
 
-	    AccountResponse response = new AccountResponse();
+    @Override
+    public List<AccountResponse> filterAccounts(Long id, String name, String email, String phoneNumber, String status) {
+        try {
+            Boolean isActive = null;
+            Boolean isDeleted = null;
 
-	    response.setId(updatedAccount.getId());
-	    response.setName(updatedAccount.getName());
-	    response.setEmail(updatedAccount.getEmail());
-	    response.setRole(updatedAccount.getRole());
-	    response.setMessage("Account updated successfully");
+            if (status != null) {
+                if ("ACTIVE".equalsIgnoreCase(status)) {
+                    isActive = true;
+                    isDeleted = false;
+                } else if ("DELETED".equalsIgnoreCase(status)) {
+                    isActive = false;
+                    isDeleted = true;
+                }
+            }
 
-	    return response;
-	}
+            List<AccountEntity> accounts = accountRepository.filterAccounts(id, name, email, phoneNumber, isActive, isDeleted);
 
-	@Override
-	public void deleteAccount(Long id) {
+            return accounts.stream()
+                    .map(accountMapper::toResponse)
+                    .toList();
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new RuntimeException("Unable to filter accounts.", e);
+        }
+    }
 
-	    if (!accountRepository.existsById(id)) {
-	        throw new RuntimeException("Account not found");
-	    }
-
-	    accountRepository.deleteById(id);
-	}
-
-	@Override
-	public LoginResponse login(LoginRequest request) {
-
-	    Account account = accountRepository.findByEmail(request.getEmail())
-	            .orElseThrow(() -> new RuntimeException("Invalid email"));
-
-	    if (!account.getPassword().equals(request.getPassword())) {
-	        throw new RuntimeException("Invalid password");
-	    }
-
-	    LoginResponse response = new LoginResponse();
-
-	    response.setMessage("Login Successful");
-	    response.setRole(account.getRole());
-	    
-	    return response;
-	}
-
+    private void validateId(Long id) {
+        String errorMsg = (id == null) ? "Account Id is required." : (id <= 0) ? "Invalid Account Id." : null;
+        if (errorMsg != null) {
+            throw new IllegalArgumentException(errorMsg);
+        }
+    }
 }
