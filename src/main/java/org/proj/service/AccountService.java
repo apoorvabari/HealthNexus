@@ -6,6 +6,8 @@ import org.proj.dto.AccountRequest;
 import org.proj.dto.AccountResponse;
 import org.proj.dto.LoginRequest;
 import org.proj.dto.LoginResponse;
+import org.proj.dto.LogoutResponse;
+import org.proj.dto.AccountFilterRequest;
 
 public interface AccountService {
 
@@ -21,6 +23,9 @@ public interface AccountService {
 
 	LoginResponse login(LoginRequest request);
 
-	List<AccountResponse> filterAccounts(Long id, String name, String email, String phoneNumber, String status);
+	LogoutResponse logout(String userId);
+
+
+	List<AccountResponse> filterAccounts(AccountFilterRequest filterRequest);
 
 }

@@ -20,20 +20,20 @@ public interface AccountRepo extends JpaRepository<AccountEntity, Long> {
     List<AccountEntity> findByIsDeletedFalse();
 
     @Query("SELECT a FROM AccountEntity a WHERE " +
-           "(:id IS NULL OR a.id = :id) AND " +
-           "(:name IS NULL OR " +
-           "  LOWER(a.firstName) LIKE LOWER(CONCAT('%', :name, '%')) OR " +
-           "  LOWER(a.middleName) LIKE LOWER(CONCAT('%', :name, '%')) OR " +
-           "  LOWER(a.lastName) LIKE LOWER(CONCAT('%', :name, '%'))) AND " +
-           "(:email IS NULL OR LOWER(a.email) LIKE LOWER(CONCAT('%', :email, '%'))) AND " +
-           "(:phoneNumber IS NULL OR a.phoneNumber LIKE CONCAT('%', :phoneNumber, '%')) AND " +
-           "(:isActive IS NULL OR a.isActive = :isActive) AND " +
-           "(:isDeleted IS NULL OR a.isDeleted = :isDeleted)")
+            "(:id IS NULL OR a.id = :id) AND " +
+            "(:name IS NULL OR " +
+            "  LOWER(a.firstName) LIKE LOWER(CONCAT('%', :name, '%')) OR " +
+            "  LOWER(a.middleName) LIKE LOWER(CONCAT('%', :name, '%')) OR " +
+            "  LOWER(a.lastName) LIKE LOWER(CONCAT('%', :name, '%'))) AND " +
+            "(:email IS NULL OR LOWER(a.email) LIKE LOWER(CONCAT('%', :email, '%'))) AND " +
+            "(:phoneNumber IS NULL OR a.phoneNumber LIKE CONCAT('%', :phoneNumber, '%')) AND " +
+            "(:isActive IS NULL OR a.isActive = :isActive) AND " +
+            "(:isDeleted IS NULL OR a.isDeleted = :isDeleted)")
     List<AccountEntity> filterAccounts(
-            @Param("id") Long id,
-            @Param("name") String name,
-            @Param("email") String email,
-            @Param("phoneNumber") String phoneNumber,
-            @Param("isActive") Boolean isActive,
-            @Param("isDeleted") Boolean isDeleted);
+            Long id,
+            String name,
+            String email,
+            String phoneNumber,
+            Boolean isActive,
+            Boolean isDeleted);
 }

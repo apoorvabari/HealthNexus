@@ -6,8 +6,10 @@ import java.util.Set;
 
 import org.proj.dto.AccountRequest;
 import org.proj.dto.AccountResponse;
+import org.proj.dto.AccountFilterRequest;
 import org.proj.dto.LoginRequest;
 import org.proj.dto.LoginResponse;
+import org.proj.dto.LogoutResponse;
 import org.proj.service.AccountService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -41,6 +43,12 @@ public class AccountController {
         return ResponseEntity.ok(accountService.login(request));
     }
 
+    @PostMapping("/logout")
+    public ResponseEntity<LogoutResponse> logout(@RequestParam(required = false) String userId) {
+        return ResponseEntity.ok(accountService.logout(userId));
+    }
+
+
     @GetMapping("/{id}")
     public ResponseEntity<AccountResponse> getAccountById(
             @PathVariable Long id) {
@@ -53,34 +61,9 @@ public class AccountController {
     }
 
     @GetMapping("/filter")
-    public ResponseEntity<?> filterAccounts(
-            @RequestParam Map<String, String> allParams) {
-
-        Set<String> allowedParams = Set.of("id", "firstName", "email", "phoneNumber", "status");
-
-        // 1. Validate keys
-        for (String param : allParams.keySet()) {
-            if (!allowedParams.contains(param)) {
-                throw new IllegalArgumentException("Unknown query parameter: " + param);
-            }
-        }
-
-        // 2. Extract and manually convert values
-        Long id = allParams.containsKey("id") ? Long.parseLong(allParams.get("id")) : null;
-        String firstName = allParams.get("firstName");
-        String email = allParams.get("email");
-        String phoneNumber = allParams.get("phoneNumber");
-        String status = allParams.get("status");
-
-        List<AccountResponse> accounts =
-                accountService.filterAccounts(id, firstName, email, phoneNumber, status);
-
-        if (accounts.isEmpty()) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(Map.of("message", "No accounts found."));
-        }
-
-        return ResponseEntity.ok(accounts);
+    public ResponseEntity<List<AccountResponse>> filterAccounts(
+            @ModelAttribute AccountFilterRequest request) {
+        return ResponseEntity.ok(accountService.filterAccounts(request));
     }
 
     @PutMapping("/{id}")

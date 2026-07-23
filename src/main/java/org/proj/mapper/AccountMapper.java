@@ -1,5 +1,6 @@
 package org.proj.mapper;
 
+import jakarta.validation.constraints.NotBlank;
 import org.proj.dto.AccountRequest;
 import org.proj.dto.AccountResponse;
 import org.proj.entity.AccountEntity;
@@ -23,9 +24,19 @@ public class AccountMapper {
                 .build();
     }
 
+    public void updateEntity(AccountEntity account, AccountRequest request, PasswordEncoder encoder) {
+        account.setFirstName(request.getFirstName());
+        account.setMiddleName(request.getMiddleName());
+        account.setLastName(request.getLastName());
+        account.setPassword(encoder.encode(request.getPassword()));
+        account.setRole(request.getRole() != null ? AccountEntity.Role.valueOf(request.getRole().trim().toUpperCase()) : null);
+        account.setPhoneNumber(request.getPhoneNumber());
+    }
+
     public AccountResponse toResponse(AccountEntity account) {
         return AccountResponse.builder()
                 .id(account.getId())
+                .userId(account.getUserId())
                 .firstName(account.getFirstName())
                 .middleName(account.getMiddleName())
                 .lastName(account.getLastName())
@@ -34,6 +45,7 @@ public class AccountMapper {
                 .phoneNumber(account.getPhoneNumber())
                 .isActive(account.getIsActive())
                 .isDeleted(account.getIsDeleted())
+                .lastLogin(account.getLastLogin())
                 .message("Success")
                 .build();
     }

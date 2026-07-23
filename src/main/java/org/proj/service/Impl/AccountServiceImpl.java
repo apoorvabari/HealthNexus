@@ -1,11 +1,14 @@
 package org.proj.service.Impl;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import org.proj.dto.AccountRequest;
 import org.proj.dto.AccountResponse;
+import org.proj.dto.AccountFilterRequest;
 import org.proj.dto.LoginRequest;
 import org.proj.dto.LoginResponse;
+import org.proj.dto.LogoutResponse;
 import org.proj.entity.AccountEntity;
 import org.proj.mapper.AccountMapper;
 import org.proj.repository.AccountRepo;
@@ -66,7 +69,7 @@ public class AccountServiceImpl implements AccountService {
     public List<AccountResponse> getAllAccounts() {
         try {
             List<AccountEntity> accounts = accountRepository.findByIsActiveTrue();
-            
+
             return accounts.stream()
                     .map(accountMapper::toResponse)
                     .toList();
@@ -89,20 +92,11 @@ public class AccountServiceImpl implements AccountService {
                 }
                 account.setEmail(newEmail);
             }
-
-            account.setFirstName(request.getFirstName());
-            account.setMiddleName(request.getMiddleName());
-            account.setLastName(request.getLastName());
-            account.setPassword(passwordEncoder.encode(request.getPassword()));
-            account.setRole(request.getRole() != null ? AccountEntity.Role.valueOf(request.getRole().trim().toUpperCase()) : null);
-            account.setPhoneNumber(request.getPhoneNumber());
+            
+            accountMapper.updateEntity(account, request, passwordEncoder);
 
             if (request.getIsActive() != null) {
                 account.setIsActive(request.getIsActive());
-            }
-
-            if (request.getIsDeleted() != null) {
-                account.setIsDeleted(request.getIsDeleted());
             }
 
             AccountEntity updatedAccount = accountRepository.save(account);
@@ -139,30 +133,68 @@ public class AccountServiceImpl implements AccountService {
     @Override
     public LoginResponse login(LoginRequest request) {
         try {
-            AccountEntity account = accountRepository.findByEmail(request.getEmail())
-                    .orElseThrow(() -> new IllegalArgumentException("Invalid email or password"));
-
-            if (!passwordEncoder.matches(request.getPassword(), account.getPassword())) {
-                throw new IllegalArgumentException("Invalid email or password");
+            if (request.getEmail() == null || request.getEmail().isBlank()) {
+                throw new IllegalArgumentException("Email is required");
+            }
+            if (request.getPassword() == null || request.getPassword().isBlank()) {
+                throw new IllegalArgumentException("Password is required");
             }
 
-            LoginResponse response = new LoginResponse();
-            response.setMessage("Login Successful");
-            response.setRole(account.getRole() != null ? account.getRole().name() : null);
+            String trimmedEmail = request.getEmail().trim();
+            AccountEntity account = accountRepository.findByEmail(trimmedEmail)
+                    .orElseThrow(() -> new IllegalArgumentException("Invalid email"));
+
+            if (!passwordEncoder.matches(request.getPassword(), account.getPassword())) {
+                throw new IllegalArgumentException("Invalid password");
+            }
+
+            if (Boolean.TRUE.equals(account.getIsDeleted()) || Boolean.FALSE.equals(account.getIsActive())) {
+                throw new IllegalArgumentException("Account is inactive or disabled. Please contact support.");
+            }
+
+            LoginResponse response = LoginResponse.builder()
+                    .id(account.getId())
+                    .userId(account.getUserId())
+                    .firstName(account.getFirstName())
+                    .lastName(account.getLastName())
+                    .email(account.getEmail())
+                    .role(account.getRole() != null ? account.getRole().name() : null)
+                    .message("Login Successful")
+                    .build();
+
+            account.setLastLogin(LocalDateTime.now());
+            accountRepository.save(account);
 
             return response;
         } catch (IllegalArgumentException e) {
             throw e;
         } catch (Exception e) {
-            throw new RuntimeException("Unable to login.");
+            throw new RuntimeException("Unable to login. Please check credentials or try again.");
         }
     }
 
     @Override
-    public List<AccountResponse> filterAccounts(Long id, String name, String email, String phoneNumber, String status) {
+    public LogoutResponse logout(String userId) {
+        try {
+            LogoutResponse response = new LogoutResponse();
+            if (userId != null && !userId.isBlank()) {
+                response.setMessage("Logged out successfully for user " + userId);
+            } else {
+                response.setMessage("Logged out successfully");
+            }
+            return response;
+        } catch (Exception e) {
+            throw new RuntimeException("Unable to logout.");
+        }
+    }
+
+
+    @Override
+    public List<AccountResponse> filterAccounts(AccountFilterRequest filterRequest) {
         try {
             Boolean isActive = null;
             Boolean isDeleted = null;
+            String status = filterRequest.getStatus();
 
             if (status != null) {
                 if ("ACTIVE".equalsIgnoreCase(status)) {
@@ -174,7 +206,14 @@ public class AccountServiceImpl implements AccountService {
                 }
             }
 
-            List<AccountEntity> accounts = accountRepository.filterAccounts(id, name, email, phoneNumber, isActive, isDeleted);
+            List<AccountEntity> accounts = accountRepository.filterAccounts(
+                    filterRequest.getId(),
+                    filterRequest.getName(),
+                    filterRequest.getEmail(),
+                    filterRequest.getPhoneNumber(),
+                    isActive,
+                    isDeleted
+            );
 
             return accounts.stream()
                     .map(accountMapper::toResponse)
