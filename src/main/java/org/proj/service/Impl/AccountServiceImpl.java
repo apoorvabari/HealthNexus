@@ -14,6 +14,7 @@ import org.proj.mapper.AccountMapper;
 import org.proj.repository.AccountRepo;
 import org.proj.service.AccountService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -32,7 +33,7 @@ public class AccountServiceImpl implements AccountService {
     @Override
     public AccountResponse register(AccountRequest request) {
         try {
-            if (accountRepository.existsByEmail(request.getEmail())) {
+            if (accountRepository.existsByEmailIgnoreCase(request.getEmail())) {
                 throw new IllegalArgumentException("Email already exists");
             }
 
@@ -87,17 +88,13 @@ public class AccountServiceImpl implements AccountService {
 
             if (request.getEmail() != null) {
                 String newEmail = request.getEmail().trim();
-                if (!account.getEmail().equalsIgnoreCase(newEmail) && accountRepository.existsByEmail(newEmail)) {
+                if (!account.getEmail().equalsIgnoreCase(newEmail) && accountRepository.existsByEmailIgnoreCase(newEmail)) {
                     throw new IllegalArgumentException("Email already exists");
                 }
                 account.setEmail(newEmail);
             }
-            
-            accountMapper.updateEntity(account, request, passwordEncoder);
 
-            if (request.getIsActive() != null) {
-                account.setIsActive(request.getIsActive());
-            }
+            accountMapper.updateEntity(account, request, passwordEncoder);
 
             AccountEntity updatedAccount = accountRepository.save(account);
 
@@ -141,11 +138,11 @@ public class AccountServiceImpl implements AccountService {
             }
 
             String trimmedEmail = request.getEmail().trim();
-            AccountEntity account = accountRepository.findByEmail(trimmedEmail)
-                    .orElseThrow(() -> new IllegalArgumentException("Invalid email"));
+            AccountEntity account = accountRepository.findByEmailIgnoreCase(trimmedEmail)
+                    .orElseThrow(() -> new BadCredentialsException("Invalid email "));
 
             if (!passwordEncoder.matches(request.getPassword(), account.getPassword())) {
-                throw new IllegalArgumentException("Invalid password");
+                throw new BadCredentialsException("Invalid password");
             }
 
             if (Boolean.TRUE.equals(account.getIsDeleted()) || Boolean.FALSE.equals(account.getIsActive())) {
@@ -166,7 +163,7 @@ public class AccountServiceImpl implements AccountService {
             accountRepository.save(account);
 
             return response;
-        } catch (IllegalArgumentException e) {
+        } catch (IllegalArgumentException | BadCredentialsException e) {
             throw e;
         } catch (Exception e) {
             throw new RuntimeException("Unable to login. Please check credentials or try again.");
@@ -187,7 +184,6 @@ public class AccountServiceImpl implements AccountService {
             throw new RuntimeException("Unable to logout.");
         }
     }
-
 
     @Override
     public List<AccountResponse> filterAccounts(AccountFilterRequest filterRequest) {
@@ -212,8 +208,7 @@ public class AccountServiceImpl implements AccountService {
                     filterRequest.getEmail(),
                     filterRequest.getPhoneNumber(),
                     isActive,
-                    isDeleted
-            );
+                    isDeleted);
 
             return accounts.stream()
                     .map(accountMapper::toResponse)
@@ -224,6 +219,19 @@ public class AccountServiceImpl implements AccountService {
             e.printStackTrace();
             throw new RuntimeException("Unable to filter accounts.", e);
         }
+    }
+
+    @Override
+    public void resetPassword(LoginRequest.PasswordResetRequest request) {
+        if (!request.getNewPassword().equals(request.getConfirmPassword())) {
+            throw new IllegalArgumentException("Passwords do not match");
+        }
+
+        AccountEntity account = accountRepository.findByEmailIgnoreCase(request.getEmail().trim())
+                .orElseThrow(() -> new IllegalArgumentException("Account not found with this email"));
+
+        account.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        accountRepository.save(account);
     }
 
     private void validateId(Long id) {

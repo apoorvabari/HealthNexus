@@ -43,11 +43,17 @@ public class AccountController {
         return ResponseEntity.ok(accountService.login(request));
     }
 
+    @PostMapping("/reset-password")
+    public ResponseEntity<String> resetPassword(
+            @RequestBody @Valid LoginRequest.PasswordResetRequest request) {
+        accountService.resetPassword(request);
+        return ResponseEntity.ok("Password reset successfully");
+    }
+
     @PostMapping("/logout")
     public ResponseEntity<LogoutResponse> logout(@RequestParam(required = false) String userId) {
         return ResponseEntity.ok(accountService.logout(userId));
     }
-
 
     @GetMapping("/{id}")
     public ResponseEntity<AccountResponse> getAccountById(
@@ -69,7 +75,7 @@ public class AccountController {
     @PutMapping("/{id}")
     public ResponseEntity<AccountResponse> updateAccount(
             @PathVariable Long id,
-            @Valid @RequestBody AccountRequest request) {
+            @RequestBody AccountRequest request) {
 
         return ResponseEntity.ok(accountService.updateAccount(id, request));
     }

@@ -25,7 +25,8 @@ public interface AccountService {
 
 	LogoutResponse logout(String userId);
 
-
 	List<AccountResponse> filterAccounts(AccountFilterRequest filterRequest);
+
+	void resetPassword(LoginRequest.PasswordResetRequest request);
 
 }

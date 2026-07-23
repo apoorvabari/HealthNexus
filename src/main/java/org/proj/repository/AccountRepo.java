@@ -12,8 +12,10 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface AccountRepo extends JpaRepository<AccountEntity, Long> {
     Optional<AccountEntity> findByEmail(String email);
+    Optional<AccountEntity> findByEmailIgnoreCase(String email);
 
     boolean existsByEmail(String email);
+    boolean existsByEmailIgnoreCase(String email);
 
     List<AccountEntity> findByIsActiveTrue();
 

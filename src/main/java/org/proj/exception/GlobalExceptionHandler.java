@@ -45,6 +45,16 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
     }
 
+    @ExceptionHandler(org.springframework.security.authentication.BadCredentialsException.class)
+    public ResponseEntity<AccountResponse> handleBadCredentialsException(
+            org.springframework.security.authentication.BadCredentialsException ex) {
+
+        AccountResponse response = new AccountResponse();
+        response.setMessage(ex.getMessage());
+
+        return new ResponseEntity<>(response, HttpStatus.UNAUTHORIZED);
+    }
+
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<AccountResponse> handleRuntimeException(
             RuntimeException ex) {
@@ -57,5 +67,4 @@ public class GlobalExceptionHandler {
 
     }
 
-    
 }
