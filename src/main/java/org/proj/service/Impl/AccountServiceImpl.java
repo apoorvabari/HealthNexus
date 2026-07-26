@@ -6,16 +6,13 @@ import java.util.List;
 import org.proj.dto.AccountRequest;
 import org.proj.dto.AccountResponse;
 import org.proj.dto.AccountFilterRequest;
-import org.proj.dto.LoginRequest;
-import org.proj.dto.LoginResponse;
 import org.proj.dto.LogoutResponse;
 import org.proj.entity.AccountEntity;
 import org.proj.mapper.AccountMapper;
 import org.proj.repository.AccountRepo;
 import org.proj.service.AccountService;
+import org.proj.service.KeycloakAdminService;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.security.authentication.BadCredentialsException;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -25,19 +22,24 @@ public class AccountServiceImpl implements AccountService {
     private AccountRepo accountRepository;
 
     @Autowired
-    private PasswordEncoder passwordEncoder;
+    private AccountMapper accountMapper;
 
     @Autowired
-    private AccountMapper accountMapper;
+    private KeycloakAdminService keycloakAdminService;
 
     @Override
     public AccountResponse register(AccountRequest request) {
+        String keycloakUserId = null;
         try {
             if (accountRepository.existsByEmailIgnoreCase(request.getEmail())) {
                 throw new IllegalArgumentException("Email already exists");
             }
 
-            AccountEntity account = accountMapper.toEntity(request, passwordEncoder);
+            keycloakUserId = keycloakAdminService.createUserInKeycloak(request);
+
+            AccountEntity account = accountMapper.toEntity(request);
+            account.setUserId(java.util.UUID.fromString(keycloakUserId));
+
             AccountEntity savedAccount = accountRepository.save(account);
 
             AccountResponse response = accountMapper.toResponse(savedAccount);
@@ -45,9 +47,15 @@ public class AccountServiceImpl implements AccountService {
 
             return response;
         } catch (IllegalArgumentException e) {
+            if (keycloakUserId != null) {
+                keycloakAdminService.deleteUserInKeycloak(keycloakUserId);
+            }
             throw e;
         } catch (Exception e) {
-            throw new RuntimeException("Unable to register account. Please try again.");
+            if (keycloakUserId != null) {
+                keycloakAdminService.deleteUserInKeycloak(keycloakUserId);
+            }
+            throw new RuntimeException("Unable to register account. Please try again. " + e.getMessage(), e);
         }
     }
 
@@ -94,7 +102,7 @@ public class AccountServiceImpl implements AccountService {
                 account.setEmail(newEmail);
             }
 
-            accountMapper.updateEntity(account, request, passwordEncoder);
+            accountMapper.updateEntity(account, request);
 
             AccountEntity updatedAccount = accountRepository.save(account);
 
@@ -116,6 +124,10 @@ public class AccountServiceImpl implements AccountService {
             AccountEntity account = accountRepository.findById(id)
                     .orElseThrow(() -> new IllegalArgumentException("Account not found"));
 
+            if (Boolean.TRUE.equals(account.getIsDeleted())) {
+                throw new IllegalArgumentException("Account is already deleted.");
+            }
+
             account.setIsDeleted(true);
             account.setIsActive(false);
 
@@ -124,49 +136,6 @@ public class AccountServiceImpl implements AccountService {
             throw e;
         } catch (Exception e) {
             throw new RuntimeException("Unable to delete account.");
-        }
-    }
-
-    @Override
-    public LoginResponse login(LoginRequest request) {
-        try {
-            if (request.getEmail() == null || request.getEmail().isBlank()) {
-                throw new IllegalArgumentException("Email is required");
-            }
-            if (request.getPassword() == null || request.getPassword().isBlank()) {
-                throw new IllegalArgumentException("Password is required");
-            }
-
-            String trimmedEmail = request.getEmail().trim();
-            AccountEntity account = accountRepository.findByEmailIgnoreCase(trimmedEmail)
-                    .orElseThrow(() -> new BadCredentialsException("Invalid email "));
-
-            if (!passwordEncoder.matches(request.getPassword(), account.getPassword())) {
-                throw new BadCredentialsException("Invalid password");
-            }
-
-            if (Boolean.TRUE.equals(account.getIsDeleted()) || Boolean.FALSE.equals(account.getIsActive())) {
-                throw new IllegalArgumentException("Account is inactive or disabled. Please contact support.");
-            }
-
-            LoginResponse response = LoginResponse.builder()
-                    .id(account.getId())
-                    .userId(account.getUserId())
-                    .firstName(account.getFirstName())
-                    .lastName(account.getLastName())
-                    .email(account.getEmail())
-                    .role(account.getRole() != null ? account.getRole().name() : null)
-                    .message("Login Successful")
-                    .build();
-
-            account.setLastLogin(LocalDateTime.now());
-            accountRepository.save(account);
-
-            return response;
-        } catch (IllegalArgumentException | BadCredentialsException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new RuntimeException("Unable to login. Please check credentials or try again.");
         }
     }
 
@@ -221,23 +190,30 @@ public class AccountServiceImpl implements AccountService {
         }
     }
 
-    @Override
-    public void resetPassword(LoginRequest.PasswordResetRequest request) {
-        if (!request.getNewPassword().equals(request.getConfirmPassword())) {
-            throw new IllegalArgumentException("Passwords do not match");
-        }
-
-        AccountEntity account = accountRepository.findByEmailIgnoreCase(request.getEmail().trim())
-                .orElseThrow(() -> new IllegalArgumentException("Account not found with this email"));
-
-        account.setPassword(passwordEncoder.encode(request.getNewPassword()));
-        accountRepository.save(account);
-    }
-
     private void validateId(Long id) {
         String errorMsg = (id == null) ? "Account Id is required." : (id <= 0) ? "Invalid Account Id." : null;
         if (errorMsg != null) {
             throw new IllegalArgumentException(errorMsg);
         }
     }
+
+    @Override
+    public void updateLastLogin(String email, String keycloakUserId) {
+        AccountEntity account = accountRepository.findByEmailIgnoreCase(email)
+                .orElseThrow(() -> new IllegalArgumentException("Account not found"));
+
+        if (keycloakUserId == null || keycloakUserId.isBlank()) {
+            throw new IllegalArgumentException("Keycloak User ID is required.");
+        }
+
+        try {
+            account.setUserId(java.util.UUID.fromString(keycloakUserId));
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Invalid Keycloak User ID format.");
+        }
+
+        account.setLastLogin(LocalDateTime.now());
+        accountRepository.save(account);
+    }
+
 }

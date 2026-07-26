@@ -1,22 +1,19 @@
 package org.proj.mapper;
 
-import jakarta.validation.constraints.NotBlank;
 import org.proj.dto.AccountRequest;
 import org.proj.dto.AccountResponse;
 import org.proj.entity.AccountEntity;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
 @Component
 public class AccountMapper {
 
-    public AccountEntity toEntity(AccountRequest request, PasswordEncoder encoder) {
+    public AccountEntity toEntity(AccountRequest request) {
         return AccountEntity.builder()
                 .firstName(request.getFirstName())
                 .middleName(request.getMiddleName())
                 .lastName(request.getLastName())
                 .email(request.getEmail())
-                .password(encoder.encode(request.getPassword()))
                 .role(request.getRole() != null ? AccountEntity.Role.valueOf(request.getRole().trim().toUpperCase())
                         : null)
                 .phoneNumber(request.getPhoneNumber())
@@ -25,7 +22,7 @@ public class AccountMapper {
                 .build();
     }
 
-    public void updateEntity(AccountEntity account, AccountRequest request, PasswordEncoder encoder) {
+    public void updateEntity(AccountEntity account, AccountRequest request) {
         if (request.getFirstName() != null) {
             account.setFirstName(request.getFirstName());
         }
@@ -34,9 +31,6 @@ public class AccountMapper {
         }
         if (request.getLastName() != null) {
             account.setLastName(request.getLastName());
-        }
-        if (request.getPassword() != null && !request.getPassword().isBlank()) {
-            account.setPassword(encoder.encode(request.getPassword()));
         }
         if (request.getRole() != null) {
             account.setRole(AccountEntity.Role.valueOf(request.getRole().trim().toUpperCase()));

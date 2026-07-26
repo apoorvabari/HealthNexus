@@ -55,6 +55,16 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(response, HttpStatus.UNAUTHORIZED);
     }
 
+    @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
+    public ResponseEntity<AccountResponse> handleAccessDeniedException(
+            org.springframework.security.access.AccessDeniedException ex) {
+
+        AccountResponse response = new AccountResponse();
+        response.setMessage("Access Denied: " + ex.getMessage());
+
+        return new ResponseEntity<>(response, HttpStatus.FORBIDDEN);
+    }
+
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<AccountResponse> handleRuntimeException(
             RuntimeException ex) {

@@ -4,8 +4,6 @@ import java.util.List;
 
 import org.proj.dto.AccountRequest;
 import org.proj.dto.AccountResponse;
-import org.proj.dto.LoginRequest;
-import org.proj.dto.LoginResponse;
 import org.proj.dto.LogoutResponse;
 import org.proj.dto.AccountFilterRequest;
 
@@ -21,12 +19,10 @@ public interface AccountService {
 
 	void deleteAccount(Long id);
 
-	LoginResponse login(LoginRequest request);
-
 	LogoutResponse logout(String userId);
 
 	List<AccountResponse> filterAccounts(AccountFilterRequest filterRequest);
 
-	void resetPassword(LoginRequest.PasswordResetRequest request);
+	void updateLastLogin(String email, String keycloakUserId);
 
 }

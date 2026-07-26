@@ -1,6 +1,5 @@
 package org.proj.dto;
 
-import jakarta.persistence.Column;
 import jakarta.validation.constraints.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -21,7 +20,7 @@ public class AccountRequest {
 
     @NotBlank(message = "Middle name is required")
     @NotNull
-    @Pattern(regexp = "^$|^[A-Za-z]{1,10}$", message = "Middle name must contain only alphabets and be between 1 and 10 characters")
+    @Pattern(regexp = "^[A-Za-z]{1,10}$", message = "Middle name must contain only alphabets and be between 1 and 10 characters")
     @Size(min = 1, max = 10)
     private String middleName;
 
@@ -39,7 +38,7 @@ public class AccountRequest {
 
     @NotBlank(message = "Password is required")
     @NotNull
-    @Pattern(regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@#$%^&+=!]).{4,8}$", message = "Password must be 4-8 characters with uppercase, lowercase, number and special character.")
+    @Size(min = 4, max = 20, message = "Password must be between 4 and 20 characters")
     private String password;
 
     @NotBlank(message = "Please select a role.")
@@ -53,12 +52,10 @@ public class AccountRequest {
     private String phoneNumber;
 
     @NotNull(message = "Active status is required")
-    @Column(nullable = false)
     @Builder.Default
     private Boolean isActive = true;
 
     @NotNull(message = "Deleted status is required")
-    @Column(nullable = false)
     @Builder.Default
     private Boolean isDeleted = false;
 
