@@ -101,4 +101,53 @@ public class KeycloakAdminService {
             e.printStackTrace();
         }
     }
+
+    public void resetUserPassword(String email, String newPassword) {
+        Keycloak keycloak = getKeycloakInstance();
+        java.util.List<UserRepresentation> users = keycloak.realm(realm).users().search(email.trim(), true);
+        if (users == null || users.isEmpty()) {
+            throw new IllegalArgumentException("User with email " + email + " does not exist in Keycloak.");
+        }
+        String userId = users.get(0).getId();
+
+        CredentialRepresentation credential = new CredentialRepresentation();
+        credential.setType(CredentialRepresentation.PASSWORD);
+        credential.setValue(newPassword);
+        credential.setTemporary(false);
+
+        keycloak.realm(realm).users().get(userId).resetPassword(credential);
+    }
+
+    public void updateUserInKeycloak(String currentEmail, String newEmail, String firstName, String lastName) {
+        try {
+            Keycloak keycloak = getKeycloakInstance();
+            java.util.List<UserRepresentation> users = keycloak.realm(realm).users().search(currentEmail.trim(), true);
+            if (users == null || users.isEmpty()) {
+                return;
+            }
+            UserRepresentation user = users.get(0);
+            
+            boolean updated = false;
+            if (newEmail != null && !newEmail.isBlank() && !newEmail.equalsIgnoreCase(currentEmail)) {
+                user.setEmail(newEmail.trim());
+                user.setUsername(newEmail.trim());
+                updated = true;
+            }
+            if (firstName != null && !firstName.isBlank()) {
+                user.setFirstName(firstName.trim());
+                updated = true;
+            }
+            if (lastName != null && !lastName.isBlank()) {
+                user.setLastName(lastName.trim());
+                updated = true;
+            }
+
+            if (updated) {
+                keycloak.realm(realm).users().get(user.getId()).update(user);
+            }
+        } catch (Exception e) {
+            System.err.println("CRITICAL: Failed to update user in Keycloak: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
 }

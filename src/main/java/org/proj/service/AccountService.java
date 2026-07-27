@@ -6,6 +6,7 @@ import org.proj.dto.AccountRequest;
 import org.proj.dto.AccountResponse;
 import org.proj.dto.LogoutResponse;
 import org.proj.dto.AccountFilterRequest;
+import org.proj.dto.PasswordResetRequest;
 
 public interface AccountService {
 
@@ -24,5 +25,9 @@ public interface AccountService {
 	List<AccountResponse> filterAccounts(AccountFilterRequest filterRequest);
 
 	void updateLastLogin(String email, String keycloakUserId);
+
+	void resetPassword(PasswordResetRequest request);
+
+	AccountResponse getAccountByEmail(String email);
 
 }

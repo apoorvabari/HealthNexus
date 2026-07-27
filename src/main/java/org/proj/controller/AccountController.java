@@ -41,6 +41,15 @@ public class AccountController {
         return ResponseEntity.ok(accountService.logout(userId));
     }
 
+    @GetMapping("/profile")
+    public ResponseEntity<AccountResponse> getProfile(@AuthenticationPrincipal Jwt jwt) {
+        String email = jwt.getClaimAsString("email");
+        if (email == null || email.isBlank()) {
+            email = jwt.getClaimAsString("preferred_username");
+        }
+        return ResponseEntity.ok(accountService.getAccountByEmail(email));
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST') or (hasRole('PATIENT') and @securityService.isOwner(authentication, #id))")
     public ResponseEntity<AccountResponse> getAccountById(
@@ -91,6 +100,12 @@ public class AccountController {
         System.out.println("DEBUG: Extracted Keycloak User ID is: '" + keycloakUserId + "'");
         accountService.updateLastLogin(email, keycloakUserId);
         return ResponseEntity.ok("Last login time updated successfully");
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<String> resetPassword(@Valid @RequestBody org.proj.dto.PasswordResetRequest request) {
+        accountService.resetPassword(request);
+        return ResponseEntity.ok("Password reset successfully");
     }
 
 }

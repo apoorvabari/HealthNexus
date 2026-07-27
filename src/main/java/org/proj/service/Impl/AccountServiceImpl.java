@@ -94,6 +94,8 @@ public class AccountServiceImpl implements AccountService {
             AccountEntity account = accountRepository.findById(id)
                     .orElseThrow(() -> new IllegalArgumentException("Account not found"));
 
+            String oldEmail = account.getEmail();
+
             if (request.getEmail() != null) {
                 String newEmail = request.getEmail().trim();
                 if (!account.getEmail().equalsIgnoreCase(newEmail) && accountRepository.existsByEmailIgnoreCase(newEmail)) {
@@ -105,6 +107,14 @@ public class AccountServiceImpl implements AccountService {
             accountMapper.updateEntity(account, request);
 
             AccountEntity updatedAccount = accountRepository.save(account);
+
+            // Sync updates to Keycloak
+            keycloakAdminService.updateUserInKeycloak(
+                    oldEmail,
+                    request.getEmail(),
+                    request.getFirstName(),
+                    request.getLastName()
+            );
 
             AccountResponse response = accountMapper.toResponse(updatedAccount);
             response.setMessage("Account updated successfully");
@@ -214,6 +224,25 @@ public class AccountServiceImpl implements AccountService {
 
         account.setLastLogin(LocalDateTime.now());
         accountRepository.save(account);
+    }
+
+    @Override
+    public void resetPassword(org.proj.dto.PasswordResetRequest request) {
+        if (request.getNewPassword() == null || !request.getNewPassword().equals(request.getConfirmPassword())) {
+            throw new IllegalArgumentException("Passwords do not match");
+        }
+
+        accountRepository.findByEmailIgnoreCase(request.getEmail())
+                .orElseThrow(() -> new IllegalArgumentException("Account not found"));
+
+        keycloakAdminService.resetUserPassword(request.getEmail(), request.getNewPassword());
+    }
+
+    @Override
+    public AccountResponse getAccountByEmail(String email) {
+        AccountEntity account = accountRepository.findByEmailIgnoreCase(email)
+                .orElseThrow(() -> new IllegalArgumentException("Account not found"));
+        return accountMapper.toResponse(account);
     }
 
 }
