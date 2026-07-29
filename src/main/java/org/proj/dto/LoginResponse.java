@@ -11,12 +11,15 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class AccountFilterRequest {
+public class LoginResponse {
+
     private UUID id;
+    private UUID userId;
     private String firstName;
-    private String middleName;
     private String lastName;
     private String email;
-    private String phoneNumber;
-    private String status;
+    private String role;
+    private String accessToken;
+    private String refreshToken;
+    private String message;
 }

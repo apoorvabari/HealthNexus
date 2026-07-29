@@ -1,55 +1,52 @@
 package org.proj.mapper;
 
-import org.proj.dto.AccountRequest;
-import org.proj.dto.AccountResponse;
+import org.proj.dto.RegisterRequest;
+import org.proj.dto.RegisterResponse;
 import org.proj.entity.AccountEntity;
 import org.springframework.stereotype.Component;
 
 @Component
 public class AccountMapper {
 
-    public AccountEntity toEntity(AccountRequest request) {
+    public AccountEntity toEntity(RegisterRequest request) {
         return AccountEntity.builder()
                 .firstName(request.getFirstName())
                 .middleName(request.getMiddleName())
                 .lastName(request.getLastName())
                 .email(request.getEmail())
-                .role(request.getRole() != null ? AccountEntity.Role.valueOf(request.getRole().trim().toUpperCase())
-                        : null)
+                .role(parseRole(request.getRole()))
                 .phoneNumber(request.getPhoneNumber())
                 .isActive(request.getIsActive() != null ? request.getIsActive() : true)
                 .isDeleted(request.getIsDeleted() != null ? request.getIsDeleted() : false)
                 .build();
     }
 
-    public void updateEntity(AccountEntity account, AccountRequest request) {
-        if (request.getFirstName() != null) {
-            account.setFirstName(request.getFirstName());
+    private AccountEntity.Role parseRole(String roleStr) {
+        if (roleStr == null || roleStr.isBlank()) {
+            return AccountEntity.Role.PATIENT;
         }
-        if (request.getMiddleName() != null) {
-            account.setMiddleName(request.getMiddleName());
-        }
-        if (request.getLastName() != null) {
-            account.setLastName(request.getLastName());
-        }
-        if (request.getRole() != null) {
-            account.setRole(AccountEntity.Role.valueOf(request.getRole().trim().toUpperCase()));
-        }
-        if (request.getPhoneNumber() != null) {
-            account.setPhoneNumber(request.getPhoneNumber());
-        }
-        if (request.getIsActive() != null) {
-            account.setIsActive(request.getIsActive());
-        }
-        if (request.getIsDeleted() != null) {
-            account.setIsDeleted(request.getIsDeleted());
+        try {
+            return AccountEntity.Role.valueOf(roleStr.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException(
+                    "Invalid role: '" + roleStr + "'. Allowed roles are PATIENT, DOCTOR, RECEPTIONIST, ADMIN.");
         }
     }
 
-    public AccountResponse toResponse(AccountEntity account) {
-        return AccountResponse.builder()
-                .id(account.getId())
-                .userId(account.getUserId())
+    public void updateEntity(AccountEntity account, RegisterRequest request) {
+        account.setFirstName(request.getFirstName() != null ? request.getFirstName() : account.getFirstName());
+        account.setMiddleName(request.getMiddleName() != null ? request.getMiddleName() : account.getMiddleName());
+        account.setLastName(request.getLastName() != null ? request.getLastName() : account.getLastName());
+        account.setRole(request.getRole() != null && !request.getRole().isBlank() ? parseRole(request.getRole())
+                : account.getRole());
+        account.setPhoneNumber(request.getPhoneNumber() != null ? request.getPhoneNumber() : account.getPhoneNumber());
+        account.setIsActive(request.getIsActive() != null ? request.getIsActive() : account.getIsActive());
+        account.setIsDeleted(request.getIsDeleted() != null ? request.getIsDeleted() : account.getIsDeleted());
+    }
+
+    public RegisterResponse toResponse(AccountEntity account) {
+        return RegisterResponse.builder()
+                .id(account.getUserId())
                 .firstName(account.getFirstName())
                 .middleName(account.getMiddleName())
                 .lastName(account.getLastName())
@@ -58,7 +55,7 @@ public class AccountMapper {
                 .phoneNumber(account.getPhoneNumber())
                 .isActive(account.getIsActive())
                 .isDeleted(account.getIsDeleted())
-                .lastLogin(account.getLastLogin())
+
                 .message("Success")
                 .build();
     }

@@ -1,39 +1,48 @@
 package org.proj.controller;
 
 import java.util.List;
+import java.util.UUID;
 
-import org.proj.dto.AccountRequest;
-import org.proj.dto.AccountResponse;
+import org.proj.dto.RegisterRequest;
+import org.proj.dto.RegisterResponse;
+import org.proj.dto.LoginRequest;
+import org.proj.dto.LoginResponse;
+import org.springframework.security.core.Authentication;
 import org.proj.dto.AccountFilterRequest;
 import org.proj.dto.LogoutResponse;
+import org.proj.dto.PasswordResetRequest;
 import org.proj.service.AccountService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
 import org.springframework.security.access.prepost.PreAuthorize;
 import jakarta.validation.Valid;
 
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.oauth2.jwt.Jwt;
-
 @RestController
 @RequestMapping("/api/accounts")
-@CrossOrigin(origins = "http://localhost:8082")
 public class AccountController {
 
     @Autowired
     private AccountService accountService;
 
     @PostMapping("/register")
-    public ResponseEntity<AccountResponse> registerAccount(
-            @Valid @RequestBody AccountRequest request) {
+    public ResponseEntity<RegisterResponse> registerAccount(
+            @Valid @RequestBody RegisterRequest request) {
 
-        AccountResponse response = accountService.register(request);
+        RegisterResponse response = accountService.register(request);
 
         return new ResponseEntity<>(response, HttpStatus.CREATED);
 
+    }
+
+    @PostMapping("/login")
+    public ResponseEntity<LoginResponse> login(
+            @Valid @RequestBody LoginRequest request) {
+
+        LoginResponse response = accountService.login(request);
+
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/logout")
@@ -42,68 +51,56 @@ public class AccountController {
     }
 
     @GetMapping("/profile")
-    public ResponseEntity<AccountResponse> getProfile(@AuthenticationPrincipal Jwt jwt) {
-        String email = jwt.getClaimAsString("email");
-        if (email == null || email.isBlank()) {
-            email = jwt.getClaimAsString("preferred_username");
-        }
+    public ResponseEntity<RegisterResponse> getProfile() {
+        String email = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication()
+                .getName();
         return ResponseEntity.ok(accountService.getAccountByEmail(email));
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST') or (hasRole('PATIENT') and @securityService.isOwner(authentication, #id))")
-    public ResponseEntity<AccountResponse> getAccountById(
-            @PathVariable Long id) {
-        return ResponseEntity.ok(accountService.getAccountById(id));
+    @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST', 'PATIENT', 'ADMIN')")
+    public ResponseEntity<RegisterResponse> getAccountById(
+            @PathVariable UUID id,
+            Authentication authentication) {
+        String email = authentication.getName();
+        return ResponseEntity.ok(accountService.getAccountById(id, email));
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST')")
-    public ResponseEntity<List<AccountResponse>> getAllAccounts() {
+    @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST', 'ADMIN')")
+    public ResponseEntity<List<RegisterResponse>> getAllAccounts() {
         return ResponseEntity.ok(accountService.getAllAccounts());
     }
 
     @GetMapping("/filter")
-    @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST')")
-    public ResponseEntity<List<AccountResponse>> filterAccounts(
+    @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST', 'ADMIN')")
+    public ResponseEntity<List<RegisterResponse>> filterAccounts(
             @ModelAttribute AccountFilterRequest request) {
         return ResponseEntity.ok(accountService.filterAccounts(request));
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST') or (hasRole('PATIENT') and @securityService.isOwner(authentication, #id))")
-    public ResponseEntity<AccountResponse> updateAccount(
-            @PathVariable Long id,
-            @RequestBody AccountRequest request) {
-
-        return ResponseEntity.ok(accountService.updateAccount(id, request));
+    @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST', 'PATIENT', 'ADMIN')")
+    public ResponseEntity<RegisterResponse> updateAccount(
+            @PathVariable UUID id,
+            @RequestBody RegisterRequest request,
+            Authentication authentication) {
+        String email = authentication.getName();
+        return ResponseEntity.ok(accountService.updateAccount(id, request, email));
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST')")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST', 'ADMIN')")
     public ResponseEntity<String> deleteAccount(
-            @PathVariable Long id) {
+            @PathVariable UUID id) {
 
         accountService.deleteAccount(id);
 
         return ResponseEntity.ok("Account deleted successfully");
     }
 
-    @PostMapping("/update-last-login")
-    public ResponseEntity<String> updateLastLogin(@AuthenticationPrincipal Jwt jwt) {
-        String email = jwt.getClaimAsString("email");
-        if (email == null || email.isBlank()) {
-            email = jwt.getClaimAsString("preferred_username");
-        }
-        String keycloakUserId = jwt.getSubject();
-        System.out.println("DEBUG: Extracted email for login update is: '" + email + "'");
-        System.out.println("DEBUG: Extracted Keycloak User ID is: '" + keycloakUserId + "'");
-        accountService.updateLastLogin(email, keycloakUserId);
-        return ResponseEntity.ok("Last login time updated successfully");
-    }
-
     @PostMapping("/reset-password")
-    public ResponseEntity<String> resetPassword(@Valid @RequestBody org.proj.dto.PasswordResetRequest request) {
+    public ResponseEntity<String> resetPassword(@Valid @RequestBody PasswordResetRequest request) {
         accountService.resetPassword(request);
         return ResponseEntity.ok("Password reset successfully");
     }

@@ -4,8 +4,6 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 import jakarta.persistence.*;
 import lombok.*;
-
-import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
@@ -28,6 +26,9 @@ public class AccountEntity {
     private String middleName;
     private String lastName;
 
+    @Column(nullable = false)
+    private String password;
+
     @Column(nullable = false, unique = true)
     private String email;
 
@@ -42,9 +43,6 @@ public class AccountEntity {
 
     @Builder.Default
     private Boolean isDeleted = false;
-
-    @Column
-    private LocalDateTime lastLogin;
 
     @PrePersist
 

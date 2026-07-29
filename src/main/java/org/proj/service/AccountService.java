@@ -1,33 +1,38 @@
 package org.proj.service;
 
 import java.util.List;
+import java.util.UUID;
 
-import org.proj.dto.AccountRequest;
-import org.proj.dto.AccountResponse;
+import org.proj.dto.RegisterRequest;
+import org.proj.dto.RegisterResponse;
 import org.proj.dto.LogoutResponse;
 import org.proj.dto.AccountFilterRequest;
+import org.proj.dto.LoginRequest;
+import org.proj.dto.LoginResponse;
 import org.proj.dto.PasswordResetRequest;
 
 public interface AccountService {
 
-	AccountResponse register(AccountRequest request);
+	RegisterResponse register(RegisterRequest request);
 
-	AccountResponse getAccountById(Long id);
+	LoginResponse login(LoginRequest request);
 
-	List<AccountResponse> getAllAccounts();
+	RegisterResponse getAccountById(UUID id, String currentUserEmail);
 
-	AccountResponse updateAccount(Long id, AccountRequest request);
+	List<RegisterResponse> getAllAccounts();
 
-	void deleteAccount(Long id);
+	RegisterResponse updateAccount(UUID id, RegisterRequest request, String currentUserEmail);
+
+	void deleteAccount(UUID id);
 
 	LogoutResponse logout(String userId);
 
-	List<AccountResponse> filterAccounts(AccountFilterRequest filterRequest);
+	List<RegisterResponse> filterAccounts(AccountFilterRequest filterRequest);
 
-	void updateLastLogin(String email, String keycloakUserId);
+
 
 	void resetPassword(PasswordResetRequest request);
 
-	AccountResponse getAccountByEmail(String email);
+	RegisterResponse getAccountByEmail(String email);
 
 }
