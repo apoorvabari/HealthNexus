@@ -3,10 +3,11 @@ package org.proj.service;
 import jakarta.ws.rs.core.Response;
 import org.keycloak.admin.client.Keycloak;
 import org.keycloak.admin.client.KeycloakBuilder;
+import org.keycloak.representations.AccessTokenResponse;
 import org.keycloak.representations.idm.CredentialRepresentation;
 import org.keycloak.representations.idm.RoleRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
-import org.proj.dto.AccountRequest;
+import org.proj.dto.RegisterRequest;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -33,6 +34,9 @@ public class KeycloakAdminService {
     @Value("${keycloak.realm}")
     private String realm;
 
+    @Value("${keycloak.client-id:healthnexus-frontend}")
+    private String userClientId;
+
     private Keycloak getKeycloakInstance() {
         return KeycloakBuilder.builder()
                 .serverUrl(serverUrl)
@@ -43,9 +47,9 @@ public class KeycloakAdminService {
                 .build();
     }
 
-    public String createUserInKeycloak(AccountRequest request) {
+    public String createUserInKeycloak(RegisterRequest request) {
         Keycloak keycloak = getKeycloakInstance();
-        
+
         UserRepresentation user = new UserRepresentation();
         user.setUsername(request.getEmail().trim());
         user.setEmail(request.getEmail().trim());
@@ -80,7 +84,8 @@ public class KeycloakAdminService {
             try {
                 keycloak.realm(realm).users().get(userId).remove();
             } catch (Exception rollbackException) {
-                System.err.println("CRITICAL: Failed to rollback user creation in Keycloak: " + rollbackException.getMessage());
+                System.err.println(
+                        "CRITICAL: Failed to rollback user creation in Keycloak: " + rollbackException.getMessage());
                 rollbackException.printStackTrace();
             }
             throw new RuntimeException("Failed to assign password or role in Keycloak: " + e.getMessage(), e);
@@ -126,28 +131,49 @@ public class KeycloakAdminService {
                 return;
             }
             UserRepresentation user = users.get(0);
-            
+
             boolean updated = false;
+
             if (newEmail != null && !newEmail.isBlank() && !newEmail.equalsIgnoreCase(currentEmail)) {
                 user.setEmail(newEmail.trim());
                 user.setUsername(newEmail.trim());
                 updated = true;
             }
-            if (firstName != null && !firstName.isBlank()) {
-                user.setFirstName(firstName.trim());
-                updated = true;
-            }
-            if (lastName != null && !lastName.isBlank()) {
-                user.setLastName(lastName.trim());
-                updated = true;
-            }
 
-            if (updated) {
+            // Using ternary assignments for first and last name
+            user.setFirstName((firstName != null && !firstName.isBlank()) ? firstName.trim() : user.getFirstName());
+            user.setLastName((lastName != null && !lastName.isBlank()) ? lastName.trim() : user.getLastName());
+
+            // Check if first or last name actually changed/provided along with email flag
+            boolean nameUpdated = (firstName != null && !firstName.isBlank())
+                    || (lastName != null && !lastName.isBlank());
+
+            if (updated || nameUpdated) {
                 keycloak.realm(realm).users().get(user.getId()).update(user);
             }
         } catch (Exception e) {
             System.err.println("CRITICAL: Failed to update user in Keycloak: " + e.getMessage());
             e.printStackTrace();
+        }
+    }
+
+    public AccessTokenResponse authenticateAndGetToken(String email, String password) {
+        Keycloak keycloak = KeycloakBuilder.builder()
+                .serverUrl(serverUrl)
+                .realm(realm)
+                .username(email.trim())
+                .password(password)
+                .clientId(userClientId)
+                .build();
+        try {
+            return keycloak.tokenManager().getAccessToken();
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Incorrect password", e);
+        } finally {
+            try {
+                keycloak.close();
+            } catch (Exception ignored) {
+            }
         }
     }
 }

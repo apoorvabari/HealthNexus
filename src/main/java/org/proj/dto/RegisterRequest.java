@@ -10,7 +10,7 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class AccountRequest {
+public class RegisterRequest {
 
     @NotBlank(message = "First name is required")
     @NotNull

@@ -1,14 +1,14 @@
 package org.proj.mapper;
 
-import org.proj.dto.AccountRequest;
-import org.proj.dto.AccountResponse;
+import org.proj.dto.RegisterRequest;
+import org.proj.dto.RegisterResponse;
 import org.proj.entity.AccountEntity;
 import org.springframework.stereotype.Component;
 
 @Component
 public class AccountMapper {
 
-    public AccountEntity toEntity(AccountRequest request) {
+    public AccountEntity toEntity(RegisterRequest request) {
         return AccountEntity.builder()
                 .firstName(request.getFirstName())
                 .middleName(request.getMiddleName())
@@ -22,32 +22,19 @@ public class AccountMapper {
                 .build();
     }
 
-    public void updateEntity(AccountEntity account, AccountRequest request) {
-        if (request.getFirstName() != null) {
-            account.setFirstName(request.getFirstName());
-        }
-        if (request.getMiddleName() != null) {
-            account.setMiddleName(request.getMiddleName());
-        }
-        if (request.getLastName() != null) {
-            account.setLastName(request.getLastName());
-        }
-        if (request.getRole() != null) {
-            account.setRole(AccountEntity.Role.valueOf(request.getRole().trim().toUpperCase()));
-        }
-        if (request.getPhoneNumber() != null) {
-            account.setPhoneNumber(request.getPhoneNumber());
-        }
-        if (request.getIsActive() != null) {
-            account.setIsActive(request.getIsActive());
-        }
-        if (request.getIsDeleted() != null) {
-            account.setIsDeleted(request.getIsDeleted());
-        }
+    public void updateEntity(AccountEntity account, RegisterRequest request) {
+        account.setFirstName(request.getFirstName() != null ? request.getFirstName() : account.getFirstName());
+        account.setMiddleName(request.getMiddleName() != null ? request.getMiddleName() : account.getMiddleName());
+        account.setLastName(request.getLastName() != null ? request.getLastName() : account.getLastName());
+        account.setRole(request.getRole() != null ? AccountEntity.Role.valueOf(request.getRole().trim().toUpperCase())
+                : account.getRole());
+        account.setPhoneNumber(request.getPhoneNumber() != null ? request.getPhoneNumber() : account.getPhoneNumber());
+        account.setIsActive(request.getIsActive() != null ? request.getIsActive() : account.getIsActive());
+        account.setIsDeleted(request.getIsDeleted() != null ? request.getIsDeleted() : account.getIsDeleted());
     }
 
-    public AccountResponse toResponse(AccountEntity account) {
-        return AccountResponse.builder()
+    public RegisterResponse toResponse(AccountEntity account) {
+        return RegisterResponse.builder()
                 .id(account.getId())
                 .userId(account.getUserId())
                 .firstName(account.getFirstName())

@@ -2,18 +2,23 @@ package org.proj.service.Impl;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 
-import org.proj.dto.AccountRequest;
-import org.proj.dto.AccountResponse;
+import org.proj.dto.RegisterRequest;
+import org.proj.dto.RegisterResponse;
 import org.proj.dto.AccountFilterRequest;
 import org.proj.dto.LogoutResponse;
+import org.proj.dto.LoginRequest;
+import org.proj.dto.LoginResponse;
 import org.proj.entity.AccountEntity;
 import org.proj.mapper.AccountMapper;
 import org.proj.repository.AccountRepo;
 import org.proj.service.AccountService;
 import org.proj.service.KeycloakAdminService;
+import org.keycloak.representations.AccessTokenResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AccountServiceImpl implements AccountService {
@@ -28,39 +33,84 @@ public class AccountServiceImpl implements AccountService {
     private KeycloakAdminService keycloakAdminService;
 
     @Override
-    public AccountResponse register(AccountRequest request) {
+    @Transactional
+    public RegisterResponse register(RegisterRequest request) {
+        if (accountRepository.existsByEmailIgnoreCase(request.getEmail())) {
+            throw new IllegalArgumentException("Email already exists");
+        }
+        if (accountRepository.existsByPhoneNumber(request.getPhoneNumber())) {
+            throw new IllegalArgumentException("Phone number already exists");
+        }
+
+        AccountEntity account = accountMapper.toEntity(request);
+        AccountEntity savedAccount = null;
+        try {
+            savedAccount = accountRepository.saveAndFlush(account);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to save account in database: " + e.getMessage(), e);
+        }
+
         String keycloakUserId = null;
         try {
-            if (accountRepository.existsByEmailIgnoreCase(request.getEmail())) {
-                throw new IllegalArgumentException("Email already exists");
-            }
-
             keycloakUserId = keycloakAdminService.createUserInKeycloak(request);
-
-            AccountEntity account = accountMapper.toEntity(request);
-            account.setUserId(java.util.UUID.fromString(keycloakUserId));
-
-            AccountEntity savedAccount = accountRepository.save(account);
-
-            AccountResponse response = accountMapper.toResponse(savedAccount);
-            response.setMessage("Account registered successfully");
-
-            return response;
-        } catch (IllegalArgumentException e) {
-            if (keycloakUserId != null) {
-                keycloakAdminService.deleteUserInKeycloak(keycloakUserId);
+            if (keycloakUserId == null || keycloakUserId.isBlank()) {
+                throw new RuntimeException("Keycloak returned an empty User ID");
             }
-            throw e;
+
+            savedAccount.setUserId(java.util.UUID.fromString(keycloakUserId));
+            savedAccount = accountRepository.saveAndFlush(savedAccount);
+
+            RegisterResponse response = accountMapper.toResponse(savedAccount);
+            response.setMessage("Account registered successfully");
+            return response;
         } catch (Exception e) {
-            if (keycloakUserId != null) {
-                keycloakAdminService.deleteUserInKeycloak(keycloakUserId);
+            if (savedAccount != null) {
+                try {
+                    accountRepository.delete(savedAccount);
+                    accountRepository.flush();
+                } catch (Exception rollbackException) {
+                    System.err.println("CRITICAL: Failed to rollback MySQL database record during registration failure: " + rollbackException.getMessage());
+                }
+            }
+            if (e instanceof IllegalArgumentException) {
+                throw (IllegalArgumentException) e;
             }
             throw new RuntimeException("Unable to register account. Please try again. " + e.getMessage(), e);
         }
     }
 
     @Override
-    public AccountResponse getAccountById(Long id) {
+    @Transactional
+    public LoginResponse login(LoginRequest request) {
+        // 1. Verify if the account exists in the local database first
+        AccountEntity account = accountRepository.findByEmailIgnoreCase(request.getEmail())
+                .orElseThrow(() -> new IllegalArgumentException("Email not found"));
+
+        if (Boolean.FALSE.equals(account.getIsActive()) || Boolean.TRUE.equals(account.getIsDeleted())) {
+            throw new IllegalArgumentException("Account is inactive or disabled.");
+        }
+
+        // 2. Authenticate with Keycloak to retrieve JWT token details
+        AccessTokenResponse tokenResponse = keycloakAdminService.authenticateAndGetToken(request.getEmail(), request.getPassword());
+
+        account.setLastLogin(LocalDateTime.now());
+        accountRepository.save(account);
+
+        return LoginResponse.builder()
+                .id(account.getId())
+                .userId(account.getUserId())
+                .firstName(account.getFirstName())
+                .lastName(account.getLastName())
+                .email(account.getEmail())
+                .role(account.getRole() != null ? account.getRole().name() : null)
+                .accessToken(tokenResponse.getToken())
+                .refreshToken(tokenResponse.getRefreshToken())
+                .message("Login successful")
+                .build();
+    }
+
+    @Override
+    public RegisterResponse getAccountById(UUID id) {
         try {
             validateId(id);
             AccountEntity account = accountRepository.findById(id)
@@ -75,7 +125,7 @@ public class AccountServiceImpl implements AccountService {
     }
 
     @Override
-    public List<AccountResponse> getAllAccounts() {
+    public List<RegisterResponse> getAllAccounts() {
         try {
             List<AccountEntity> accounts = accountRepository.findByIsActiveTrue();
 
@@ -88,7 +138,7 @@ public class AccountServiceImpl implements AccountService {
     }
 
     @Override
-    public AccountResponse updateAccount(Long id, AccountRequest request) {
+    public RegisterResponse updateAccount(UUID id, RegisterRequest request) {
         try {
             validateId(id);
             AccountEntity account = accountRepository.findById(id)
@@ -116,7 +166,7 @@ public class AccountServiceImpl implements AccountService {
                     request.getLastName()
             );
 
-            AccountResponse response = accountMapper.toResponse(updatedAccount);
+            RegisterResponse response = accountMapper.toResponse(updatedAccount);
             response.setMessage("Account updated successfully");
 
             return response;
@@ -128,7 +178,7 @@ public class AccountServiceImpl implements AccountService {
     }
 
     @Override
-    public void deleteAccount(Long id) {
+    public void deleteAccount(UUID id) {
         try {
             validateId(id);
             AccountEntity account = accountRepository.findById(id)
@@ -165,7 +215,7 @@ public class AccountServiceImpl implements AccountService {
     }
 
     @Override
-    public List<AccountResponse> filterAccounts(AccountFilterRequest filterRequest) {
+    public List<RegisterResponse> filterAccounts(AccountFilterRequest filterRequest) {
         try {
             Boolean isActive = null;
             Boolean isDeleted = null;
@@ -181,11 +231,48 @@ public class AccountServiceImpl implements AccountService {
                 }
             }
 
+            String firstName = filterRequest.getFirstName();
+            if (firstName != null && firstName.trim().isEmpty()) {
+                firstName = null;
+            } else if (firstName != null) {
+                firstName = firstName.trim();
+            }
+
+            String middleName = filterRequest.getMiddleName();
+            if (middleName != null && middleName.trim().isEmpty()) {
+                middleName = null;
+            } else if (middleName != null) {
+                middleName = middleName.trim();
+            }
+
+            String lastName = filterRequest.getLastName();
+            if (lastName != null && lastName.trim().isEmpty()) {
+                lastName = null;
+            } else if (lastName != null) {
+                lastName = lastName.trim();
+            }
+
+            String email = filterRequest.getEmail();
+            if (email != null && email.trim().isEmpty()) {
+                email = null;
+            } else if (email != null) {
+                email = email.trim();
+            }
+
+            String phoneNumber = filterRequest.getPhoneNumber();
+            if (phoneNumber != null && phoneNumber.trim().isEmpty()) {
+                phoneNumber = null;
+            } else if (phoneNumber != null) {
+                phoneNumber = phoneNumber.trim();
+            }
+
             List<AccountEntity> accounts = accountRepository.filterAccounts(
                     filterRequest.getId(),
-                    filterRequest.getName(),
-                    filterRequest.getEmail(),
-                    filterRequest.getPhoneNumber(),
+                    firstName,
+                    middleName,
+                    lastName,
+                    email,
+                    phoneNumber,
                     isActive,
                     isDeleted);
 
@@ -200,10 +287,9 @@ public class AccountServiceImpl implements AccountService {
         }
     }
 
-    private void validateId(Long id) {
-        String errorMsg = (id == null) ? "Account Id is required." : (id <= 0) ? "Invalid Account Id." : null;
-        if (errorMsg != null) {
-            throw new IllegalArgumentException(errorMsg);
+    private void validateId(UUID id) {
+        if (id == null) {
+            throw new IllegalArgumentException("Account Id is required.");
         }
     }
 
@@ -239,7 +325,7 @@ public class AccountServiceImpl implements AccountService {
     }
 
     @Override
-    public AccountResponse getAccountByEmail(String email) {
+    public RegisterResponse getAccountByEmail(String email) {
         AccountEntity account = accountRepository.findByEmailIgnoreCase(email)
                 .orElseThrow(() -> new IllegalArgumentException("Account not found"));
         return accountMapper.toResponse(account);

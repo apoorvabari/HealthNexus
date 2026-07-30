@@ -8,6 +8,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 
 import java.util.Optional;
+import java.util.UUID;
 
 @Service("securityService")
 public class SecurityService {
@@ -15,7 +16,7 @@ public class SecurityService {
     @Autowired
     private AccountRepo accountRepository;
 
-    public boolean isOwner(Authentication authentication, Long requestedId) {
+    public boolean isOwner(Authentication authentication, UUID requestedId) {
         if (authentication == null || !(authentication.getPrincipal() instanceof Jwt)) {
             return false;
         }

@@ -17,8 +17,10 @@ import java.util.UUID;
 public class AccountEntity {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @GeneratedValue(strategy = GenerationType.UUID)
+    @Column(name = "id", updatable = false, nullable = false, length = 36)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    private UUID id;
 
     @JdbcTypeCode(SqlTypes.VARCHAR)
     @Column(nullable = false, unique = true, updatable = false, length = 36)

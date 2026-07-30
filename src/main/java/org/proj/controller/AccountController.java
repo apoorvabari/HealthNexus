@@ -1,11 +1,14 @@
 package org.proj.controller;
 
 import java.util.List;
+import java.util.UUID;
 
-import org.proj.dto.AccountRequest;
-import org.proj.dto.AccountResponse;
+import org.proj.dto.RegisterRequest;
+import org.proj.dto.RegisterResponse;
 import org.proj.dto.AccountFilterRequest;
 import org.proj.dto.LogoutResponse;
+import org.proj.dto.LoginRequest;
+import org.proj.dto.LoginResponse;
 import org.proj.service.AccountService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -27,13 +30,19 @@ public class AccountController {
     private AccountService accountService;
 
     @PostMapping("/register")
-    public ResponseEntity<AccountResponse> registerAccount(
-            @Valid @RequestBody AccountRequest request) {
+    public ResponseEntity<RegisterResponse> registerAccount(
+            @Valid @RequestBody RegisterRequest request) {
 
-        AccountResponse response = accountService.register(request);
+        RegisterResponse response = accountService.register(request);
 
         return new ResponseEntity<>(response, HttpStatus.CREATED);
 
+    }
+
+    @PostMapping("/login")
+    public ResponseEntity<LoginResponse> login(
+            @Valid @RequestBody LoginRequest request) {
+        return ResponseEntity.ok(accountService.login(request));
     }
 
     @PostMapping("/logout")
@@ -42,7 +51,7 @@ public class AccountController {
     }
 
     @GetMapping("/profile")
-    public ResponseEntity<AccountResponse> getProfile(@AuthenticationPrincipal Jwt jwt) {
+    public ResponseEntity<RegisterResponse> getProfile(@AuthenticationPrincipal Jwt jwt) {
         String email = jwt.getClaimAsString("email");
         if (email == null || email.isBlank()) {
             email = jwt.getClaimAsString("preferred_username");
@@ -52,29 +61,29 @@ public class AccountController {
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST') or (hasRole('PATIENT') and @securityService.isOwner(authentication, #id))")
-    public ResponseEntity<AccountResponse> getAccountById(
-            @PathVariable Long id) {
+    public ResponseEntity<RegisterResponse> getAccountById(
+            @PathVariable UUID id) {
         return ResponseEntity.ok(accountService.getAccountById(id));
     }
 
     @GetMapping
     @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST')")
-    public ResponseEntity<List<AccountResponse>> getAllAccounts() {
+    public ResponseEntity<List<RegisterResponse>> getAllAccounts() {
         return ResponseEntity.ok(accountService.getAllAccounts());
     }
 
     @GetMapping("/filter")
     @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST')")
-    public ResponseEntity<List<AccountResponse>> filterAccounts(
+    public ResponseEntity<List<RegisterResponse>> filterAccounts(
             @ModelAttribute AccountFilterRequest request) {
         return ResponseEntity.ok(accountService.filterAccounts(request));
     }
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST') or (hasRole('PATIENT') and @securityService.isOwner(authentication, #id))")
-    public ResponseEntity<AccountResponse> updateAccount(
-            @PathVariable Long id,
-            @RequestBody AccountRequest request) {
+    public ResponseEntity<RegisterResponse> updateAccount(
+            @PathVariable UUID id,
+            @RequestBody RegisterRequest request) {
 
         return ResponseEntity.ok(accountService.updateAccount(id, request));
     }
@@ -82,7 +91,7 @@ public class AccountController {
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST')")
     public ResponseEntity<String> deleteAccount(
-            @PathVariable Long id) {
+            @PathVariable UUID id) {
 
         accountService.deleteAccount(id);
 

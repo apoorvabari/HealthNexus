@@ -1,6 +1,6 @@
 package org.proj.exception;
 
-import org.proj.dto.AccountResponse;
+import org.proj.dto.RegisterResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -10,10 +10,10 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<AccountResponse> handleIllegalArgumentException(
+    public ResponseEntity<RegisterResponse> handleIllegalArgumentException(
             IllegalArgumentException ex) {
 
-        AccountResponse response = new AccountResponse();
+        RegisterResponse response = new RegisterResponse();
 
         response.setMessage(ex.getMessage());
 
@@ -31,45 +31,35 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(org.springframework.web.bind.MethodArgumentNotValidException.class)
-    public ResponseEntity<AccountResponse> handleValidationException(
+    public ResponseEntity<RegisterResponse> handleValidationException(
             org.springframework.web.bind.MethodArgumentNotValidException ex) {
         String defaultMessage = ex.getBindingResult().getFieldErrors().stream()
                 .map(org.springframework.validation.FieldError::getDefaultMessage)
                 .findFirst()
                 .orElse("Validation failed");
 
-        AccountResponse response = AccountResponse.builder()
+        RegisterResponse response = RegisterResponse.builder()
                 .message(defaultMessage)
                 .build();
 
         return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
     }
 
-    @ExceptionHandler(org.springframework.security.authentication.BadCredentialsException.class)
-    public ResponseEntity<AccountResponse> handleBadCredentialsException(
-            org.springframework.security.authentication.BadCredentialsException ex) {
-
-        AccountResponse response = new AccountResponse();
-        response.setMessage(ex.getMessage());
-
-        return new ResponseEntity<>(response, HttpStatus.UNAUTHORIZED);
-    }
-
     @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
-    public ResponseEntity<AccountResponse> handleAccessDeniedException(
+    public ResponseEntity<RegisterResponse> handleAccessDeniedException(
             org.springframework.security.access.AccessDeniedException ex) {
 
-        AccountResponse response = new AccountResponse();
+        RegisterResponse response = new RegisterResponse();
         response.setMessage("Access Denied: " + ex.getMessage());
 
         return new ResponseEntity<>(response, HttpStatus.FORBIDDEN);
     }
 
     @ExceptionHandler(RuntimeException.class)
-    public ResponseEntity<AccountResponse> handleRuntimeException(
+    public ResponseEntity<RegisterResponse> handleRuntimeException(
             RuntimeException ex) {
 
-        AccountResponse response = new AccountResponse();
+        RegisterResponse response = new RegisterResponse();
 
         response.setMessage(ex.getMessage());
 
