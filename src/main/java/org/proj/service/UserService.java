@@ -6,33 +6,33 @@ import java.util.List;
 import org.proj.dto.RegisterRequest;
 import org.proj.dto.RegisterResponse;
 import org.proj.dto.LogoutResponse;
-import org.proj.dto.AccountFilterRequest;
+import org.proj.dto.UserFilterRequest;
 import org.proj.dto.PasswordResetRequest;
 import org.proj.dto.LoginRequest;
 import org.proj.dto.LoginResponse;
 
-public interface AccountService {
+public interface UserService {
 
 	RegisterResponse register(RegisterRequest request);
 
 	LoginResponse login(LoginRequest request);
 
-	RegisterResponse getAccountById(UUID id);
+	RegisterResponse getUserById(UUID id);
 
-	List<RegisterResponse> getAllAccounts();
+	List<RegisterResponse> getAllUsers();
 
-	RegisterResponse updateAccount(UUID id, RegisterRequest request);
+	RegisterResponse updateUser(UUID id, RegisterRequest request);
 
-	void deleteAccount(UUID id);
+	void deleteUser(UUID id);
 
 	LogoutResponse logout(String userId);
 
-	List<RegisterResponse> filterAccounts(AccountFilterRequest filterRequest);
+	List<RegisterResponse> filterUsers(UserFilterRequest filterRequest);
 
-	void updateLastLogin(String email, String keycloakUserId);
+	void updateLastLogin(String email);
 
 	void resetPassword(PasswordResetRequest request);
 
-	RegisterResponse getAccountByEmail(String email);
+	RegisterResponse getUserByEmail(String email);
 
 }
