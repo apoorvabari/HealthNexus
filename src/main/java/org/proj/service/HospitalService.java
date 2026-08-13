@@ -2,9 +2,11 @@ package org.proj.service;
 
 import org.proj.dto.HospitalRequest;
 import org.proj.dto.HospitalResponse;
+import org.proj.entity.HospitalEntity;
 
-import java.util.List;
 import java.util.UUID;
+
+import org.proj.dto.PageResponse;
 
 public interface HospitalService {
 
@@ -12,9 +14,15 @@ public interface HospitalService {
 
     HospitalResponse getHospitalById(UUID id);
 
-    List<HospitalResponse> getAllHospitals();
+    PageResponse<HospitalResponse> getAllHospitals(String search, int page, int size);
 
     HospitalResponse updateHospital(UUID id, HospitalRequest request);
 
     void deleteHospital(UUID id);
+
+    HospitalEntity findHospitalById(UUID hospitalId);
+
+    void save(HospitalEntity hospital);
+
+    long count();
 }

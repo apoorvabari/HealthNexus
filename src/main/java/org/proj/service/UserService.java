@@ -10,6 +10,8 @@ import org.proj.dto.UserFilterRequest;
 import org.proj.dto.PasswordResetRequest;
 import org.proj.dto.LoginRequest;
 import org.proj.dto.LoginResponse;
+import org.proj.dto.PageResponse;
+import org.proj.entity.UserEntity;
 
 public interface UserService {
 
@@ -19,7 +21,7 @@ public interface UserService {
 
 	RegisterResponse getUserById(UUID id);
 
-	List<RegisterResponse> getAllUsers();
+	PageResponse<RegisterResponse> getAllUsers(String search, int page, int size);
 
 	RegisterResponse updateUser(UUID id, RegisterRequest request);
 
@@ -35,4 +37,9 @@ public interface UserService {
 
 	RegisterResponse getUserByEmail(String email);
 
+    UserEntity findUserById(UUID accountId);
+
+    void save(UserEntity user);
+
+    long count();
 }

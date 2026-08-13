@@ -10,12 +10,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
 import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/patients")
-@CrossOrigin(origins = "http://localhost:8082")
+
 public class PatientController {
 
     @Autowired
@@ -46,6 +45,12 @@ public class PatientController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body("Detailed Error: " + e.getMessage() + " | Cause: " + (e.getCause() != null ? e.getCause().getMessage() : "None"));
         }
+    }
+
+    @GetMapping("/by-account/{accountId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DOCTOR', 'RECEPTIONIST', 'PATIENT')")
+    public ResponseEntity<PatientResponse> getPatientByAccountId(@PathVariable UUID accountId) {
+        return ResponseEntity.ok(patientService.getPatientByAccountId(accountId));
     }
 
     @PutMapping("/{id}")

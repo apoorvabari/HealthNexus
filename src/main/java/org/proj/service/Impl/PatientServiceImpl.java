@@ -7,9 +7,9 @@ import org.proj.entity.UserEntity;
 import org.proj.entity.HospitalEntity;
 import org.proj.mapper.PatientMapper;
 import org.proj.repository.PatientRepo;
-import org.proj.repository.UserRepo;
-import org.proj.repository.HospitalRepo;
+import org.proj.service.HospitalService;
 import org.proj.service.PatientService;
+import org.proj.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,10 +24,10 @@ public class PatientServiceImpl implements PatientService {
     private PatientRepo patientRepo;
 
     @Autowired
-    private UserRepo userRepo;
+    private UserService userService;
 
     @Autowired
-    private HospitalRepo hospitalRepo;
+    private HospitalService hospitalService;
 
     @Autowired
     private PatientMapper patientMapper;
@@ -40,10 +40,9 @@ public class PatientServiceImpl implements PatientService {
                 throw new IllegalArgumentException("Account ID is required");
             }
 
-            UserEntity account = userRepo.findById(request.getAccountId())
-                    .orElseThrow(() -> new IllegalArgumentException("Account not found"));
+            UserEntity account = userService.findUserById(request.getAccountId());
 
-            if (account.getRole() == null || !"patient".equals(account.getRole().getRoleName())) {
+            if (account.getRole() == null || !"PATIENT".equalsIgnoreCase(account.getRole().getRoleName())) {
                 throw new IllegalArgumentException("Account is not assigned PATIENT role.");
             }
 
@@ -51,8 +50,7 @@ public class PatientServiceImpl implements PatientService {
                 throw new IllegalArgumentException("Patient profile already exists for this account");
             }
 
-            HospitalEntity hospital = hospitalRepo.findById(request.getHospitalId())
-                    .orElseThrow(() -> new IllegalArgumentException("Hospital not found"));
+            HospitalEntity hospital = hospitalService.findHospitalById(request.getHospitalId());
 
             if (patientRepo.existsByPatientCodeAndHospitalId(request.getPatientCode(), request.getHospitalId())) {
                 throw new IllegalArgumentException("Patient code already exists in this hospital");
@@ -112,10 +110,9 @@ public class PatientServiceImpl implements PatientService {
 
             UserEntity account = patient.getAccount();
             if (request.getAccountId() != null && !request.getAccountId().equals(account.getId())) {
-                account = userRepo.findById(request.getAccountId())
-                        .orElseThrow(() -> new IllegalArgumentException("Account not found"));
+                account = userService.findUserById(request.getAccountId());
 
-                if (account.getRole() == null || !"patient".equals(account.getRole().getRoleName())) {
+                if (account.getRole() == null || !"PATIENT".equalsIgnoreCase(account.getRole().getRoleName())) {
                     throw new IllegalArgumentException("Account is not assigned PATIENT role.");
                 }
 
@@ -126,8 +123,7 @@ public class PatientServiceImpl implements PatientService {
 
             HospitalEntity hospital = patient.getHospital();
             if (request.getHospitalId() != null && !request.getHospitalId().equals(hospital.getId())) {
-                hospital = hospitalRepo.findById(request.getHospitalId())
-                        .orElseThrow(() -> new IllegalArgumentException("Hospital not found"));
+                hospital = hospitalService.findHospitalById(request.getHospitalId());
             }
 
             String targetCode = request.getPatientCode() != null ? request.getPatientCode() : patient.getPatientCode();
@@ -167,5 +163,24 @@ public class PatientServiceImpl implements PatientService {
         } catch (Exception e) {
             throw new RuntimeException("Unable to delete patient profile.", e);
         }
+    }
+
+    @Override
+    public PatientEntity findPatientById(UUID patientId) {
+        return patientRepo.findById(patientId)
+                .orElseThrow(() -> new IllegalArgumentException("Patient not found"));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PatientResponse getPatientByAccountId(UUID accountId) {
+        PatientEntity patient = patientRepo.findByAccountId(accountId)
+                .orElseThrow(() -> new IllegalArgumentException("Patient profile not found for this account"));
+        return patientMapper.toResponse(patient);
+    }
+
+    @Override
+    public long count() {
+        return patientRepo.count();
     }
 }

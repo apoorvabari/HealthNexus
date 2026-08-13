@@ -9,13 +9,12 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.proj.dto.PageResponse;
 
-import java.util.List;
 import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/hospitals")
-@CrossOrigin(origins = "http://localhost:8082")
 public class HospitalController {
 
     @Autowired
@@ -38,8 +37,11 @@ public class HospitalController {
 
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'DOCTOR', 'RECEPTIONIST', 'PATIENT')")
-    public ResponseEntity<List<HospitalResponse>> getAllHospitals() {
-        return ResponseEntity.ok(hospitalService.getAllHospitals());
+    public ResponseEntity<PageResponse<HospitalResponse>> getAllHospitals(
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(hospitalService.getAllHospitals(search, page, size));
     }
 
     @PutMapping("/{id}")

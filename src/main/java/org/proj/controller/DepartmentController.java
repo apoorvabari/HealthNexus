@@ -9,13 +9,13 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.proj.dto.PageResponse;
 
-import java.util.List;
 import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/departments")
-@CrossOrigin(origins = "http://localhost:8082")
+
 public class DepartmentController {
 
     @Autowired
@@ -38,8 +38,11 @@ public class DepartmentController {
 
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'DOCTOR', 'RECEPTIONIST', 'PATIENT')")
-    public ResponseEntity<List<DepartmentResponse>> getAllDepartments() {
-        return ResponseEntity.ok(departmentService.getAllDepartments());
+    public ResponseEntity<PageResponse<DepartmentResponse>> getAllDepartments(
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(departmentService.getAllDepartments(search, page, size));
     }
 
     @PutMapping("/{id}")

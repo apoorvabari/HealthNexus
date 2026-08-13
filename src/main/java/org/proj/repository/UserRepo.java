@@ -45,4 +45,10 @@ public interface UserRepo extends JpaRepository<UserEntity, UUID> {
                         @Param("phoneNumber") String phoneNumber,
                         @Param("isActive") Boolean isActive,
                         @Param("isDeleted") Boolean isDeleted);
+
+        @Query("SELECT u FROM UserEntity u WHERE " +
+               "(:search IS NULL OR :search = '' OR LOWER(u.firstName) LIKE LOWER(CONCAT('%', :search, '%')) " +
+               "OR LOWER(u.lastName) LIKE LOWER(CONCAT('%', :search, '%')) " +
+               "OR LOWER(u.email) LIKE LOWER(CONCAT('%', :search, '%')))")
+        org.springframework.data.domain.Page<UserEntity> searchUsers(@Param("search") String search, org.springframework.data.domain.Pageable pageable);
 }

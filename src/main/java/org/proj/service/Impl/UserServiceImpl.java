@@ -30,6 +30,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.proj.dto.PageResponse;
 
 @Service
 public class UserServiceImpl implements UserService, UserDetailsService {
@@ -53,6 +56,7 @@ public class UserServiceImpl implements UserService, UserDetailsService {
     private JwtUtil jwtUtil;
 
     @Autowired
+    @Lazy
     private PasswordEncoder passwordEncoder;
 
     @Override
@@ -143,15 +147,15 @@ public class UserServiceImpl implements UserService, UserDetailsService {
     }
 
     @Override
-    public List<RegisterResponse> getAllUsers() {
+    public PageResponse<RegisterResponse> getAllUsers(String search, int page, int size) {
         try {
-            List<UserEntity> users = userRepository.findByIsActiveTrueAndIsDeletedFalse();
-
-            return users.stream()
+            Page<UserEntity> userPage = userRepository.searchUsers(search, PageRequest.of(page, size));
+            List<RegisterResponse> content = userPage.getContent().stream()
                     .map(userMapper::toResponse)
                     .toList();
+            return new PageResponse<>(content, userPage.getNumber(), userPage.getSize(), userPage.getTotalElements(), userPage.getTotalPages(), userPage.isLast());
         } catch (Exception e) {
-            throw new RuntimeException("Unable to fetch user list.");
+            throw new RuntimeException("Unable to fetch user list.", e);
         }
     }
 
@@ -355,8 +359,25 @@ public class UserServiceImpl implements UserService, UserDetailsService {
     }
 
     @Override
+    public UserEntity findUserById(UUID accountId) {
+        return userRepository.findById(accountId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+    }
+
+
+    @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
         return userRepository.findByEmail(username.trim().toLowerCase())
                 .orElseThrow(() -> new UsernameNotFoundException("User not found with email: " + username));
+    }
+
+    @Override
+    public void save(UserEntity user) {
+        userRepository.save(user);
+    }
+
+    @Override
+    public long count() {
+        return userRepository.count();
     }
 }

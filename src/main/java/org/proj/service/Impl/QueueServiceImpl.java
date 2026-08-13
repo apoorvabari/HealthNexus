@@ -8,7 +8,8 @@ import org.proj.entity.AppointmentEntity;
 import org.proj.entity.AppointmentEntity.AppointmentStatus;
 import org.proj.mapper.QueueMapper;
 import org.proj.repository.QueueRepo;
-import org.proj.repository.AppointmentRepo;
+
+import org.proj.service.AppointmentService;
 import org.proj.service.QueueService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -27,7 +28,7 @@ public class QueueServiceImpl implements QueueService {
     private QueueRepo queueRepo;
 
     @Autowired
-    private AppointmentRepo appointmentRepo;
+    private AppointmentService appointmentService;
 
     @Autowired
     private QueueMapper queueMapper;
@@ -40,8 +41,7 @@ public class QueueServiceImpl implements QueueService {
                 throw new IllegalArgumentException("Appointment ID is required");
             }
 
-            AppointmentEntity appointment = appointmentRepo.findById(request.getAppointmentId())
-                    .orElseThrow(() -> new IllegalArgumentException("Appointment not found"));
+            AppointmentEntity appointment = appointmentService.findAppointmentById(request.getAppointmentId());
 
             if (appointment.getAppointmentStatus() == AppointmentStatus.CANCELLED) {
                 throw new IllegalArgumentException("Cannot check in a cancelled appointment");
@@ -58,7 +58,7 @@ public class QueueServiceImpl implements QueueService {
             }
 
             appointment.setAppointmentStatus(AppointmentStatus.CHECKED_IN);
-            appointmentRepo.save(appointment);
+            appointmentService.save(appointment);
 
             LocalDateTime startOfToday = LocalDate.now().atStartOfDay();
             long count = queueRepo.countByDoctorIdAndCheckedInTimeAfter(appointment.getDoctor().getId(), startOfToday);
@@ -140,7 +140,7 @@ public class QueueServiceImpl implements QueueService {
 
                 AppointmentEntity app = consultQueue.getAppointment();
                 app.setAppointmentStatus(AppointmentStatus.COMPLETED);
-                appointmentRepo.save(app);
+                appointmentService.save(app);
             }
 
             QueueEntity nextQueue = queueRepo.findFirstByDoctorIdAndQueueStatusAndCheckedInTimeAfterOrderByQueueNumberAsc(
@@ -179,7 +179,7 @@ public class QueueServiceImpl implements QueueService {
 
             AppointmentEntity app = queue.getAppointment();
             app.setAppointmentStatus(AppointmentStatus.IN_PROGRESS);
-            appointmentRepo.save(app);
+            appointmentService.save(app);
 
             QueueEntity saved = queueRepo.save(queue);
             QueueResponse response = queueMapper.toResponse(saved);
@@ -212,7 +212,7 @@ public class QueueServiceImpl implements QueueService {
 
             AppointmentEntity app = queue.getAppointment();
             app.setAppointmentStatus(AppointmentStatus.COMPLETED);
-            appointmentRepo.save(app);
+            appointmentService.save(app);
 
             QueueEntity saved = queueRepo.save(queue);
             QueueResponse response = queueMapper.toResponse(saved);
@@ -244,7 +244,7 @@ public class QueueServiceImpl implements QueueService {
 
             AppointmentEntity app = queue.getAppointment();
             app.setAppointmentStatus(AppointmentStatus.NO_SHOW);
-            appointmentRepo.save(app);
+            appointmentService.save(app);
 
             QueueEntity saved = queueRepo.save(queue);
             QueueResponse response = queueMapper.toResponse(saved);

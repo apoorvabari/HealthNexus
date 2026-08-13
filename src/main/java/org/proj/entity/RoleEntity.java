@@ -35,3 +35,5 @@ public class RoleEntity {
     @EqualsAndHashCode.Exclude
     private List<UserEntity> users = new ArrayList<>();
 }
+
+

@@ -16,4 +16,6 @@ public interface PatientRepo extends JpaRepository<PatientEntity, UUID> {
     boolean existsByAccountId(UUID accountId);
 
     boolean existsByAccountIdAndIdNot(UUID accountId, UUID id);
+
+    java.util.Optional<PatientEntity> findByAccountId(UUID accountId);
 }

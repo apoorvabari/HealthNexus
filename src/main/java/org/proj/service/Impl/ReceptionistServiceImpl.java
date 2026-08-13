@@ -8,10 +8,10 @@ import org.proj.entity.HospitalEntity;
 import org.proj.entity.DepartmentEntity;
 import org.proj.mapper.ReceptionistMapper;
 import org.proj.repository.ReceptionistRepo;
-import org.proj.repository.UserRepo;
-import org.proj.repository.HospitalRepo;
-import org.proj.repository.DepartmentRepo;
+import org.proj.service.DepartmentService;
+import org.proj.service.HospitalService;
 import org.proj.service.ReceptionistService;
+import org.proj.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,13 +26,13 @@ public class ReceptionistServiceImpl implements ReceptionistService {
     private ReceptionistRepo receptionistRepo;
 
     @Autowired
-    private UserRepo userRepo;
+    private UserService userService;
 
     @Autowired
-    private HospitalRepo hospitalRepo;
+    private HospitalService hospitalService;
 
     @Autowired
-    private DepartmentRepo departmentRepo;
+    private DepartmentService departmentService;
 
     @Autowired
     private ReceptionistMapper receptionistMapper;
@@ -45,10 +45,9 @@ public class ReceptionistServiceImpl implements ReceptionistService {
                 throw new IllegalArgumentException("Account ID is required");
             }
 
-            UserEntity account = userRepo.findById(request.getAccountId())
-                    .orElseThrow(() -> new IllegalArgumentException("Account not found"));
+            UserEntity account = userService.findUserById(request.getAccountId());
 
-            if (account.getRole() == null || !"receptionist".equals(account.getRole().getRoleName())) {
+            if (account.getRole() == null || !"RECEPTIONIST".equalsIgnoreCase(account.getRole().getRoleName())) {
                 throw new IllegalArgumentException("Account is not assigned RECEPTIONIST role.");
             }
 
@@ -56,11 +55,9 @@ public class ReceptionistServiceImpl implements ReceptionistService {
                 throw new IllegalArgumentException("Receptionist profile already exists for this account");
             }
 
-            HospitalEntity hospital = hospitalRepo.findById(request.getHospitalId())
-                    .orElseThrow(() -> new IllegalArgumentException("Hospital not found"));
+            HospitalEntity hospital = hospitalService.findHospitalById(request.getHospitalId());
 
-            DepartmentEntity department = departmentRepo.findById(request.getDepartmentId())
-                    .orElseThrow(() -> new IllegalArgumentException("Department not found"));
+            DepartmentEntity department = departmentService.findDepartmentById(request.getDepartmentId());
 
             if (receptionistRepo.existsByEmployeeCodeAndHospitalId(request.getEmployeeCode(), request.getHospitalId())) {
                 throw new IllegalArgumentException("Employee code already exists in this hospital");
@@ -118,10 +115,9 @@ public class ReceptionistServiceImpl implements ReceptionistService {
 
             UserEntity account = receptionist.getAccount();
             if (request.getAccountId() != null && !request.getAccountId().equals(account.getId())) {
-                account = userRepo.findById(request.getAccountId())
-                        .orElseThrow(() -> new IllegalArgumentException("Account not found"));
+                account = userService.findUserById(request.getAccountId());
 
-                if (account.getRole() == null || !"receptionist".equals(account.getRole().getRoleName())) {
+                if (account.getRole() == null || !"RECEPTIONIST".equalsIgnoreCase(account.getRole().getRoleName())) {
                     throw new IllegalArgumentException("Account is not assigned RECEPTIONIST role.");
                 }
 
@@ -132,14 +128,12 @@ public class ReceptionistServiceImpl implements ReceptionistService {
 
             HospitalEntity hospital = receptionist.getHospital();
             if (request.getHospitalId() != null && !request.getHospitalId().equals(hospital.getId())) {
-                hospital = hospitalRepo.findById(request.getHospitalId())
-                        .orElseThrow(() -> new IllegalArgumentException("Hospital not found"));
+                hospital = hospitalService.findHospitalById(request.getHospitalId());
             }
 
             DepartmentEntity department = receptionist.getDepartment();
             if (request.getDepartmentId() != null && !request.getDepartmentId().equals(department.getId())) {
-                department = departmentRepo.findById(request.getDepartmentId())
-                        .orElseThrow(() -> new IllegalArgumentException("Department not found"));
+                department = departmentService.findDepartmentById(request.getDepartmentId());
             }
 
             String targetCode = request.getEmployeeCode() != null ? request.getEmployeeCode()
@@ -181,4 +175,19 @@ public class ReceptionistServiceImpl implements ReceptionistService {
             throw new RuntimeException("Unable to delete receptionist profile.", e);
         }
     }
+
+    @Override
+    public ReceptionistEntity findReceptionistById(UUID bookedByReceptionistId) {
+        return receptionistRepo.findById(bookedByReceptionistId)
+                .orElseThrow(() -> new IllegalArgumentException("Receptionist not found"));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ReceptionistResponse getReceptionistByAccountId(UUID accountId) {
+        ReceptionistEntity receptionist = receptionistRepo.findByAccountId(accountId)
+                .orElseThrow(() -> new IllegalArgumentException("Receptionist profile not found for this account"));
+        return receptionistMapper.toResponse(receptionist);
+    }
+
 }

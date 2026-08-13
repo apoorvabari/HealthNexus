@@ -9,13 +9,13 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.proj.dto.PageResponse;
 
-import java.util.List;
 import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/doctors")
-@CrossOrigin(origins = "http://localhost:8082")
+
 public class DoctorController {
 
     @Autowired
@@ -38,8 +38,17 @@ public class DoctorController {
 
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'DOCTOR', 'RECEPTIONIST', 'PATIENT')")
-    public ResponseEntity<List<DoctorResponse>> getAllDoctors() {
-        return ResponseEntity.ok(doctorService.getAllDoctors());
+    public ResponseEntity<PageResponse<DoctorResponse>> getAllDoctors(
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(doctorService.getAllDoctors(search, page, size));
+    }
+
+    @GetMapping("/by-account/{accountId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DOCTOR', 'RECEPTIONIST', 'PATIENT')")
+    public ResponseEntity<DoctorResponse> getDoctorByAccountId(@PathVariable UUID accountId) {
+        return ResponseEntity.ok(doctorService.getDoctorByAccountId(accountId));
     }
 
     @PutMapping("/{id}")

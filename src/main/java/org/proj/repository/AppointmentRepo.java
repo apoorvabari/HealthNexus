@@ -23,4 +23,6 @@ public interface AppointmentRepo extends JpaRepository<AppointmentEntity, UUID> 
     List<AppointmentEntity> findByDoctorId(UUID doctorId);
 
     List<AppointmentEntity> findByPatientId(UUID patientId);
+
+    long countByAppointmentDate(LocalDate date);
 }

@@ -15,7 +15,7 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/receptionists")
-@CrossOrigin(origins = "http://localhost:8082")
+
 public class ReceptionistController {
 
     @Autowired
@@ -40,6 +40,12 @@ public class ReceptionistController {
     @PreAuthorize("hasAnyRole('ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     public ResponseEntity<List<ReceptionistResponse>> getAllReceptionists() {
         return ResponseEntity.ok(receptionistService.getAllReceptionists());
+    }
+
+    @GetMapping("/by-account/{accountId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DOCTOR', 'RECEPTIONIST')")
+    public ResponseEntity<ReceptionistResponse> getReceptionistByAccountId(@PathVariable UUID accountId) {
+        return ResponseEntity.ok(receptionistService.getReceptionistByAccountId(accountId));
     }
 
     @PutMapping("/{id}")

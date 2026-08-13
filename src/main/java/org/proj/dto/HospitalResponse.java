@@ -7,7 +7,6 @@ import lombok.NoArgsConstructor;
 import org.proj.entity.HospitalEntity.HospitalType;
 import org.proj.entity.HospitalEntity.HospitalStatus;
 
-import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Data

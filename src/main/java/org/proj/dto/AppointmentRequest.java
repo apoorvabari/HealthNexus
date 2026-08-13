@@ -50,7 +50,6 @@ public class AppointmentRequest {
     @Builder.Default
     private AppointmentStatus appointmentStatus = AppointmentStatus.SCHEDULED;
 
-    @NotNull(message = "Consultation mode is required")
     private ConsultationMode consultationMode;
 
     private String remarks;

@@ -2,9 +2,12 @@ package org.proj.service;
 
 import org.proj.dto.DoctorRequest;
 import org.proj.dto.DoctorResponse;
+import org.proj.entity.DoctorEntity;
 
-import java.util.List;
+
 import java.util.UUID;
+
+import org.proj.dto.PageResponse;
 
 public interface DoctorService {
 
@@ -12,9 +15,18 @@ public interface DoctorService {
 
     DoctorResponse getDoctorById(UUID id);
 
-    List<DoctorResponse> getAllDoctors();
+    PageResponse<DoctorResponse> getAllDoctors(String search, int page, int size);
+
 
     DoctorResponse updateDoctor(UUID id, DoctorRequest request);
 
     void deleteDoctor(UUID id);
+
+    DoctorEntity findDoctorById(UUID doctorId);
+
+    DoctorResponse getDoctorByAccountId(UUID accountId);
+
+    void save(DoctorEntity doctor);
+
+    long count();
 }

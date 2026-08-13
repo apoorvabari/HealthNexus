@@ -19,6 +19,14 @@ public interface HospitalRepo extends JpaRepository<HospitalEntity, UUID> {
 
     boolean existsByRegistrationNumber(String registrationNumber);
 
+    Optional<HospitalEntity> findByHospitalCode(String hospitalCode);
+
     @Query("SELECT MAX(h.hospitalCode) FROM HospitalEntity h")
     String findMaxHospitalCode();
+
+    @Query("SELECT h FROM HospitalEntity h WHERE " +
+           "(:search IS NULL OR :search = '' OR LOWER(h.hospitalName) LIKE LOWER(CONCAT('%', :search, '%')) " +
+           "OR LOWER(h.hospitalCode) LIKE LOWER(CONCAT('%', :search, '%')) " +
+           "OR LOWER(h.email) LIKE LOWER(CONCAT('%', :search, '%')))")
+    org.springframework.data.domain.Page<HospitalEntity> searchHospitals(@org.springframework.data.repository.query.Param("search") String search, org.springframework.data.domain.Pageable pageable);
 }

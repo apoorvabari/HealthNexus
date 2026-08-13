@@ -9,6 +9,7 @@ import org.proj.dto.UserFilterRequest;
 import org.proj.dto.LogoutResponse;
 import org.proj.dto.LoginRequest;
 import org.proj.dto.LoginResponse;
+import org.proj.dto.PageResponse;
 import org.proj.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -23,7 +24,7 @@ import org.springframework.security.core.Authentication;
 
 @RestController
 @RequestMapping("/api/users")
-@CrossOrigin(origins = "http://localhost:8082")
+
 public class UserController {
 
     @Autowired
@@ -57,27 +58,30 @@ public class UserController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST') or (hasRole('PATIENT') and @securityService.isOwner(authentication, #id))")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DOCTOR', 'RECEPTIONIST') or (hasRole('PATIENT') and @securityService.isOwner(authentication, #id))")
     public ResponseEntity<RegisterResponse> getUserById(
             @PathVariable UUID id) {
         return ResponseEntity.ok(userService.getUserById(id));
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST')")
-    public ResponseEntity<List<RegisterResponse>> getAllUsers() {
-        return ResponseEntity.ok(userService.getAllUsers());
+    @PreAuthorize("hasAnyRole('ADMIN', 'DOCTOR', 'RECEPTIONIST')")
+    public ResponseEntity<PageResponse<RegisterResponse>> getAllUsers(
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(userService.getAllUsers(search, page, size));
     }
 
     @GetMapping("/filter")
-    @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     public ResponseEntity<List<RegisterResponse>> filterUsers(
             @ModelAttribute UserFilterRequest request) {
         return ResponseEntity.ok(userService.filterUsers(request));
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST') or (hasRole('PATIENT') and @securityService.isOwner(authentication, #id))")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DOCTOR', 'RECEPTIONIST') or (hasRole('PATIENT') and @securityService.isOwner(authentication, #id))")
     public ResponseEntity<RegisterResponse> updateUser(
             @PathVariable UUID id,
             @Valid @RequestBody RegisterRequest request) {
@@ -86,7 +90,7 @@ public class UserController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole('DOCTOR', 'RECEPTIONIST')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     public ResponseEntity<String> deleteUser(
             @PathVariable UUID id) {
 

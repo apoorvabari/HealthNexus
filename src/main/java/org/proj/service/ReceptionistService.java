@@ -2,6 +2,7 @@ package org.proj.service;
 
 import org.proj.dto.ReceptionistRequest;
 import org.proj.dto.ReceptionistResponse;
+import org.proj.entity.ReceptionistEntity;
 
 import java.util.List;
 import java.util.UUID;
@@ -17,4 +18,8 @@ public interface ReceptionistService {
     ReceptionistResponse updateReceptionist(UUID id, ReceptionistRequest request);
 
     void deleteReceptionist(UUID id);
+
+    ReceptionistEntity findReceptionistById(UUID bookedByReceptionistId);
+
+    ReceptionistResponse getReceptionistByAccountId(UUID accountId);
 }

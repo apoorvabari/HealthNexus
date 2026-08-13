@@ -8,16 +8,19 @@ import org.proj.entity.HospitalEntity;
 import org.proj.entity.DepartmentEntity;
 import org.proj.mapper.DoctorMapper;
 import org.proj.repository.DoctorRepo;
-import org.proj.repository.UserRepo;
-import org.proj.repository.HospitalRepo;
-import org.proj.repository.DepartmentRepo;
+import org.proj.service.DepartmentService;
 import org.proj.service.DoctorService;
+import org.proj.service.HospitalService;
+import org.proj.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.UUID;
+import org.proj.dto.PageResponse;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 
 @Service
 public class DoctorServiceImpl implements DoctorService {
@@ -26,13 +29,13 @@ public class DoctorServiceImpl implements DoctorService {
     private DoctorRepo doctorRepo;
 
     @Autowired
-    private UserRepo userRepo;
+    private UserService userService;
 
     @Autowired
-    private HospitalRepo hospitalRepo;
+    private HospitalService hospitalService;
 
     @Autowired
-    private DepartmentRepo departmentRepo;
+    private DepartmentService departmentService;
 
     @Autowired
     private DoctorMapper doctorMapper;
@@ -45,10 +48,9 @@ public class DoctorServiceImpl implements DoctorService {
                 throw new IllegalArgumentException("Account ID is required");
             }
 
-            UserEntity account = userRepo.findById(request.getAccountId())
-                    .orElseThrow(() -> new IllegalArgumentException("Account not found"));
+            UserEntity account = userService.findUserById(request.getAccountId());
 
-            if (account.getRole() == null || !"doctor".equals(account.getRole().getRoleName())) {
+            if (account.getRole() == null || !"DOCTOR".equalsIgnoreCase(account.getRole().getRoleName())) {
                 throw new IllegalArgumentException("Account is not assigned DOCTOR role.");
             }
 
@@ -56,11 +58,9 @@ public class DoctorServiceImpl implements DoctorService {
                 throw new IllegalArgumentException("Doctor profile already exists for this account");
             }
 
-            HospitalEntity hospital = hospitalRepo.findById(request.getHospitalId())
-                    .orElseThrow(() -> new IllegalArgumentException("Hospital not found"));
+            HospitalEntity hospital = hospitalService.findHospitalById(request.getHospitalId());
 
-            DepartmentEntity department = departmentRepo.findById(request.getDepartmentId())
-                    .orElseThrow(() -> new IllegalArgumentException("Department not found"));
+            DepartmentEntity department = departmentService.findDepartmentById(request.getDepartmentId());
 
             if (doctorRepo.existsByLicenseNumber(request.getLicenseNumber())) {
                 throw new IllegalArgumentException("Doctor with this license number already exists");
@@ -98,11 +98,13 @@ public class DoctorServiceImpl implements DoctorService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<DoctorResponse> getAllDoctors() {
+    public PageResponse<DoctorResponse> getAllDoctors(String search, int page, int size) {
         try {
-            return doctorRepo.findAll().stream()
+            Page<DoctorEntity> doctorPage = doctorRepo.searchDoctors(search, PageRequest.of(page, size));
+            List<DoctorResponse> content = doctorPage.getContent().stream()
                     .map(doctorMapper::toResponse)
                     .toList();
+            return new PageResponse<>(content, doctorPage.getNumber(), doctorPage.getSize(), doctorPage.getTotalElements(), doctorPage.getTotalPages(), doctorPage.isLast());
         } catch (Exception e) {
             throw new RuntimeException("Unable to fetch doctor list.", e);
         }
@@ -120,10 +122,9 @@ public class DoctorServiceImpl implements DoctorService {
 
             UserEntity account = doctor.getAccount();
             if (request.getAccountId() != null && !request.getAccountId().equals(account.getId())) {
-                account = userRepo.findById(request.getAccountId())
-                        .orElseThrow(() -> new IllegalArgumentException("Account not found"));
+                account = userService.findUserById(request.getAccountId());
 
-                if (account.getRole() == null || !"doctor".equals(account.getRole().getRoleName())) {
+                if (account.getRole() == null || !"DOCTOR".equalsIgnoreCase(account.getRole().getRoleName())) {
                     throw new IllegalArgumentException("Account is not assigned DOCTOR role.");
                 }
 
@@ -134,14 +135,12 @@ public class DoctorServiceImpl implements DoctorService {
 
             HospitalEntity hospital = doctor.getHospital();
             if (request.getHospitalId() != null && !request.getHospitalId().equals(hospital.getId())) {
-                hospital = hospitalRepo.findById(request.getHospitalId())
-                        .orElseThrow(() -> new IllegalArgumentException("Hospital not found"));
+                hospital = hospitalService.findHospitalById(request.getHospitalId());
             }
 
             DepartmentEntity department = doctor.getDepartment();
             if (request.getDepartmentId() != null && !request.getDepartmentId().equals(department.getId())) {
-                department = departmentRepo.findById(request.getDepartmentId())
-                        .orElseThrow(() -> new IllegalArgumentException("Department not found"));
+                department = departmentService.findDepartmentById(request.getDepartmentId());
             }
 
             if (request.getLicenseNumber() != null
@@ -181,5 +180,29 @@ public class DoctorServiceImpl implements DoctorService {
         } catch (Exception e) {
             throw new RuntimeException("Unable to delete doctor profile.", e);
         }
+    }
+
+    @Override
+    public DoctorEntity findDoctorById(UUID doctorId) {
+        return doctorRepo.findById(doctorId)
+                .orElseThrow(() -> new IllegalArgumentException("Doctor not found"));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public DoctorResponse getDoctorByAccountId(UUID accountId) {
+        DoctorEntity doctor = doctorRepo.findByAccountId(accountId)
+                .orElseThrow(() -> new IllegalArgumentException("Doctor profile not found for this account"));
+        return doctorMapper.toResponse(doctor);
+    }
+
+    @Override
+    public void save(DoctorEntity doctor) {
+        doctorRepo.save(doctor);
+    }
+
+    @Override
+    public long count() {
+        return doctorRepo.count();
     }
 }

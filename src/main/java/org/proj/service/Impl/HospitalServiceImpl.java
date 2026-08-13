@@ -12,6 +12,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.UUID;
+import org.proj.dto.PageResponse;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 
 @Service
 public class HospitalServiceImpl implements HospitalService {
@@ -65,11 +68,13 @@ public class HospitalServiceImpl implements HospitalService {
     }
 
     @Override
-    public List<HospitalResponse> getAllHospitals() {
+    public PageResponse<HospitalResponse> getAllHospitals(String search, int page, int size) {
         try {
-            return hospitalRepo.findAll().stream()
+            Page<HospitalEntity> hospPage = hospitalRepo.searchHospitals(search, PageRequest.of(page, size));
+            List<HospitalResponse> content = hospPage.getContent().stream()
                     .map(hospitalMapper::toResponse)
                     .toList();
+            return new PageResponse<>(content, hospPage.getNumber(), hospPage.getSize(), hospPage.getTotalElements(), hospPage.getTotalPages(), hospPage.isLast());
         } catch (Exception e) {
             throw new RuntimeException("Unable to fetch hospital list.", e);
         }
@@ -118,8 +123,7 @@ public class HospitalServiceImpl implements HospitalService {
             if (id == null) {
                 throw new IllegalArgumentException("Hospital Id is required");
             }
-            HospitalEntity hospital = hospitalRepo.findById(id)
-                    .orElseThrow(() -> new IllegalArgumentException("Hospital not found"));
+            HospitalEntity hospital = findHospitalById(id);
 
             hospital.setStatus(HospitalEntity.HospitalStatus.INACTIVE);
             hospitalRepo.save(hospital);
@@ -128,6 +132,22 @@ public class HospitalServiceImpl implements HospitalService {
         } catch (Exception e) {
             throw new RuntimeException("Unable to delete hospital.", e);
         }
+    }
+
+    @Override
+    public HospitalEntity findHospitalById(UUID hospitalId) {
+        return hospitalRepo.findById(hospitalId)
+                .orElseThrow(() -> new IllegalArgumentException("Hospital not found"));
+    }
+
+    @Override
+    public void save(HospitalEntity hospital) {
+        hospitalRepo.save(hospital);
+    }
+
+    @Override
+    public long count() {
+        return hospitalRepo.count();
     }
 
     private synchronized String generateHospitalCode() {

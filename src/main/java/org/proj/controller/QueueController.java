@@ -15,7 +15,7 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/queue")
-@CrossOrigin(origins = "http://localhost:8082")
+
 public class QueueController {
 
     @Autowired

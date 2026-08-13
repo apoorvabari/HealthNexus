@@ -10,12 +10,7 @@ import org.proj.entity.PatientEntity;
 import org.proj.entity.ReceptionistEntity;
 import org.proj.mapper.AppointmentMapper;
 import org.proj.repository.AppointmentRepo;
-import org.proj.repository.HospitalRepo;
-import org.proj.repository.DepartmentRepo;
-import org.proj.repository.DoctorRepo;
-import org.proj.repository.PatientRepo;
-import org.proj.repository.ReceptionistRepo;
-import org.proj.service.AppointmentService;
+import org.proj.service.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,19 +27,19 @@ public class AppointmentServiceImpl implements AppointmentService {
     private AppointmentRepo appointmentRepo;
 
     @Autowired
-    private HospitalRepo hospitalRepo;
+    private HospitalService hospitalService;
 
     @Autowired
-    private DepartmentRepo departmentRepo;
+    private DepartmentService departmentService;
 
     @Autowired
-    private DoctorRepo doctorRepo;
+    private DoctorService doctorService;
 
     @Autowired
-    private PatientRepo patientRepo;
+    private PatientService patientService;
 
     @Autowired
-    private ReceptionistRepo receptionistRepo;
+    private ReceptionistService receptionistService;
 
     @Autowired
     private AppointmentMapper appointmentMapper;
@@ -53,22 +48,17 @@ public class AppointmentServiceImpl implements AppointmentService {
     @Transactional
     public AppointmentResponse createAppointment(AppointmentRequest request) {
         try {
-            HospitalEntity hospital = hospitalRepo.findById(request.getHospitalId())
-                    .orElseThrow(() -> new IllegalArgumentException("Hospital not found"));
+            HospitalEntity hospital = hospitalService.findHospitalById(request.getHospitalId());
 
-            DepartmentEntity department = departmentRepo.findById(request.getDepartmentId())
-                    .orElseThrow(() -> new IllegalArgumentException("Department not found"));
+            DepartmentEntity department = departmentService.findDepartmentById(request.getDepartmentId());
 
-            DoctorEntity doctor = doctorRepo.findById(request.getDoctorId())
-                    .orElseThrow(() -> new IllegalArgumentException("Doctor not found"));
+            DoctorEntity doctor = doctorService.findDoctorById(request.getDoctorId());
 
-            PatientEntity patient = patientRepo.findById(request.getPatientId())
-                    .orElseThrow(() -> new IllegalArgumentException("Patient not found"));
+            PatientEntity patient = patientService.findPatientById(request.getPatientId());
 
             ReceptionistEntity receptionist = null;
             if (request.getBookedByReceptionistId() != null) {
-                receptionist = receptionistRepo.findById(request.getBookedByReceptionistId())
-                        .orElseThrow(() -> new IllegalArgumentException("Receptionist not found"));
+                receptionist = receptionistService.findReceptionistById(request.getBookedByReceptionistId());
             }
 
             if (doctor.getDepartment() == null || !doctor.getDepartment().getId().equals(request.getDepartmentId())) {
@@ -147,32 +137,27 @@ public class AppointmentServiceImpl implements AppointmentService {
 
             HospitalEntity hospital = appointment.getHospital();
             if (request.getHospitalId() != null && !request.getHospitalId().equals(hospital.getId())) {
-                hospital = hospitalRepo.findById(request.getHospitalId())
-                        .orElseThrow(() -> new IllegalArgumentException("Hospital not found"));
+                hospital = hospitalService.findHospitalById(request.getHospitalId());
             }
 
             DepartmentEntity department = appointment.getDepartment();
             if (request.getDepartmentId() != null && !request.getDepartmentId().equals(department.getId())) {
-                department = departmentRepo.findById(request.getDepartmentId())
-                        .orElseThrow(() -> new IllegalArgumentException("Department not found"));
+                department = departmentService.findDepartmentById(request.getDepartmentId());
             }
 
             DoctorEntity doctor = appointment.getDoctor();
             if (request.getDoctorId() != null && !request.getDoctorId().equals(doctor.getId())) {
-                doctor = doctorRepo.findById(request.getDoctorId())
-                        .orElseThrow(() -> new IllegalArgumentException("Doctor not found"));
+                doctor = doctorService.findDoctorById(request.getDoctorId());
             }
 
             PatientEntity patient = appointment.getPatient();
             if (request.getPatientId() != null && !request.getPatientId().equals(patient.getId())) {
-                patient = patientRepo.findById(request.getPatientId())
-                        .orElseThrow(() -> new IllegalArgumentException("Patient not found"));
+                patient = patientService.findPatientById(request.getPatientId());
             }
 
             ReceptionistEntity receptionist = appointment.getBookedByReceptionist();
             if (request.getBookedByReceptionistId() != null && (receptionist == null || !request.getBookedByReceptionistId().equals(receptionist.getId()))) {
-                receptionist = receptionistRepo.findById(request.getBookedByReceptionistId())
-                        .orElseThrow(() -> new IllegalArgumentException("Receptionist not found"));
+                receptionist = receptionistService.findReceptionistById(request.getBookedByReceptionistId());
             }
 
             UUID targetDeptId = department.getId();
@@ -277,9 +262,31 @@ public class AppointmentServiceImpl implements AppointmentService {
         }
     }
 
+    @Override
+    public AppointmentEntity findAppointmentById(UUID appointmentId) {
+        return appointmentRepo.findById(appointmentId)
+                .orElseThrow(() -> new IllegalArgumentException("Appointment not found"));
+
+    }
+
+    @Override
+    public void save(AppointmentEntity app) {
+        appointmentRepo.save(app);
+    }
+
     private String generateAppointmentCode(LocalDate date) {
         String dateStr = date.toString().replace("-", "");
         String rand = UUID.randomUUID().toString().substring(0, 5).toUpperCase();
         return "APT-" + dateStr + "-" + rand;
+    }
+
+    @Override
+    public long count() {
+        return appointmentRepo.count();
+    }
+
+    @Override
+    public long countByAppointmentDate(LocalDate date) {
+        return appointmentRepo.countByAppointmentDate(date);
     }
 }

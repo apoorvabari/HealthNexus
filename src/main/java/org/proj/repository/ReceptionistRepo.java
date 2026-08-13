@@ -16,4 +16,6 @@ public interface ReceptionistRepo extends JpaRepository<ReceptionistEntity, UUID
     boolean existsByAccountId(UUID accountId);
 
     boolean existsByAccountIdAndIdNot(UUID accountId, UUID id);
+
+    java.util.Optional<ReceptionistEntity> findByAccountId(UUID accountId);
 }

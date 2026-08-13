@@ -15,7 +15,7 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/appointments")
-@CrossOrigin(origins = "http://localhost:8082")
+
 public class AppointmentController {
 
     @Autowired
@@ -37,13 +37,13 @@ public class AppointmentController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'DOCTOR', 'RECEPTIONIST')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'PATIENT', 'RECEPTIONIST')")
     public ResponseEntity<List<AppointmentResponse>> getAllAppointments() {
         return ResponseEntity.ok(appointmentService.getAllAppointments());
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'RECEPTIONIST')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEPTIONIST','PATIENT')")
     public ResponseEntity<AppointmentResponse> updateAppointment(
             @PathVariable UUID id,
             @Valid @RequestBody AppointmentRequest request) {
@@ -72,7 +72,7 @@ public class AppointmentController {
     }
 
     @GetMapping("/patient/{patientId}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'DOCTOR', 'RECEPTIONIST', 'PATIENT')")
+    @PreAuthorize("hasAnyRole('ADMIN','RECEPTIONIST','PATIENT')")
     public ResponseEntity<List<AppointmentResponse>> getAppointmentsByPatient(
             @PathVariable UUID patientId) {
         return ResponseEntity.ok(appointmentService.getAppointmentsByPatient(patientId));
