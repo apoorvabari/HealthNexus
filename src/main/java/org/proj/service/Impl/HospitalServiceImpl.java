@@ -150,6 +150,11 @@ public class HospitalServiceImpl implements HospitalService {
         return hospitalRepo.count();
     }
 
+    @Override
+    public long countByVerificationStatus(HospitalEntity.VerificationStatus verificationStatus) {
+        return hospitalRepo.countByVerificationStatus(verificationStatus);
+    }
+
     private synchronized String generateHospitalCode() {
         String maxCode = hospitalRepo.findMaxHospitalCode();
         if (maxCode == null || maxCode.isBlank()) {

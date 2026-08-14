@@ -42,4 +42,10 @@ public interface UserService {
     void save(UserEntity user);
 
     long count();
+
+    long countByIsActiveTrue();
+
+    long countByIsDeletedFalse();
+
+    long countByIsActiveTrueAndIsDeletedFalse();
 }

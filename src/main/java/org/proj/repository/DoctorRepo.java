@@ -2,7 +2,11 @@ package org.proj.repository;
 
 import org.proj.entity.DoctorEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Repository;
+import java.util.Optional;
 
 import java.util.UUID;
 
@@ -17,12 +21,16 @@ public interface DoctorRepo extends JpaRepository<DoctorEntity, UUID> {
 
     boolean existsByAccountIdAndIdNot(UUID accountId, UUID id);
 
-    java.util.Optional<DoctorEntity> findByAccountId(UUID accountId);
+    Optional<DoctorEntity> findByAccountId(UUID accountId);
 
-    @org.springframework.data.jpa.repository.Query("SELECT d FROM DoctorEntity d WHERE " +
+    long countByVerificationStatus(
+        DoctorEntity.VerificationStatus verificationStatus
+);
+
+    @Query("SELECT d FROM DoctorEntity d WHERE " +
            "(:search IS NULL OR :search = '' OR LOWER(d.account.firstName) LIKE LOWER(CONCAT('%', :search, '%')) " +
            "OR LOWER(d.account.lastName) LIKE LOWER(CONCAT('%', :search, '%')) " +
            "OR LOWER(d.specialization) LIKE LOWER(CONCAT('%', :search, '%')) " +
            "OR LOWER(d.licenseNumber) LIKE LOWER(CONCAT('%', :search, '%')))")
-    org.springframework.data.domain.Page<DoctorEntity> searchDoctors(@org.springframework.data.repository.query.Param("search") String search, org.springframework.data.domain.Pageable pageable);
+    Page<DoctorEntity> searchDoctors(String search, Pageable pageable);
 }

@@ -20,5 +20,6 @@ public class LoginResponse {
     private String role;
     private String accessToken;
     private String refreshToken;
+    private java.time.LocalDateTime lastLogin;
     private String message;
 }

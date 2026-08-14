@@ -205,4 +205,9 @@ public class DoctorServiceImpl implements DoctorService {
     public long count() {
         return doctorRepo.count();
     }
+
+    @Override
+    public long countByVerificationStatus(DoctorEntity.VerificationStatus verificationStatus) {
+        return doctorRepo.countByVerificationStatus(verificationStatus);
+    }
 }

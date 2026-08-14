@@ -11,7 +11,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class DoctorMapper {
 
-    public DoctorEntity toEntity(DoctorRequest request, UserEntity account, HospitalEntity hospital, DepartmentEntity department) {
+    public DoctorEntity toEntity(DoctorRequest request, UserEntity account, HospitalEntity hospital,
+            DepartmentEntity department) {
         if (request == null) {
             return null;
         }
@@ -25,10 +26,15 @@ public class DoctorMapper {
                 .consultationFee(request.getConsultationFee())
                 .licenseNumber(request.getLicenseNumber())
                 .status(request.getStatus() != null ? request.getStatus() : DoctorEntity.DoctorStatus.ACTIVE)
+                .verificationStatus(DoctorEntity.VerificationStatus.PENDING)
+                .licenseVerified(false)
+                .degreeVerified(false)
+                .specializationVerified(false)
                 .build();
     }
 
-    public void updateEntity(DoctorEntity doctor, DoctorRequest request, UserEntity account, HospitalEntity hospital, DepartmentEntity department) {
+    public void updateEntity(DoctorEntity doctor, DoctorRequest request, UserEntity account, HospitalEntity hospital,
+            DepartmentEntity department) {
         if (doctor == null || request == null) {
             return;
         }
@@ -41,11 +47,15 @@ public class DoctorMapper {
         if (department != null) {
             doctor.setDepartment(department);
         }
-        doctor.setSpecialization(request.getSpecialization() != null ? request.getSpecialization() : doctor.getSpecialization());
-        doctor.setQualification(request.getQualification() != null ? request.getQualification() : doctor.getQualification());
+        doctor.setSpecialization(
+                request.getSpecialization() != null ? request.getSpecialization() : doctor.getSpecialization());
+        doctor.setQualification(
+                request.getQualification() != null ? request.getQualification() : doctor.getQualification());
         doctor.setExperience(request.getExperience() != null ? request.getExperience() : doctor.getExperience());
-        doctor.setConsultationFee(request.getConsultationFee() != null ? request.getConsultationFee() : doctor.getConsultationFee());
-        doctor.setLicenseNumber(request.getLicenseNumber() != null ? request.getLicenseNumber() : doctor.getLicenseNumber());
+        doctor.setConsultationFee(
+                request.getConsultationFee() != null ? request.getConsultationFee() : doctor.getConsultationFee());
+        doctor.setLicenseNumber(
+                request.getLicenseNumber() != null ? request.getLicenseNumber() : doctor.getLicenseNumber());
         doctor.setStatus(request.getStatus() != null ? request.getStatus() : doctor.getStatus());
     }
 
@@ -73,6 +83,30 @@ public class DoctorMapper {
                 .consultationFee(doctor.getConsultationFee())
                 .licenseNumber(doctor.getLicenseNumber())
                 .status(doctor.getStatus())
+                .verificationStatus(
+                        doctor.getVerificationStatus() != null
+                                ? doctor.getVerificationStatus()
+                                : DoctorEntity.VerificationStatus.PENDING)
+
+                .licenseVerified(
+                        doctor.getLicenseVerified() != null
+                                ? doctor.getLicenseVerified()
+                                : false)
+
+                .degreeVerified(
+                        doctor.getDegreeVerified() != null
+                                ? doctor.getDegreeVerified()
+                                : false)
+
+                .specializationVerified(
+                        doctor.getSpecializationVerified() != null
+                                ? doctor.getSpecializationVerified()
+                                : false)
+
+                .verificationRemarks(doctor.getVerificationRemarks())
+                .verifiedBy(doctor.getVerifiedBy())
+                .verifiedAt(doctor.getVerifiedAt())
+
                 .message("Success")
                 .build();
     }

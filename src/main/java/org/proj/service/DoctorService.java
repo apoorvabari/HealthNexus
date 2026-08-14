@@ -29,4 +29,6 @@ public interface DoctorService {
     void save(DoctorEntity doctor);
 
     long count();
+
+    long countByVerificationStatus(DoctorEntity.VerificationStatus verificationStatus);
 }

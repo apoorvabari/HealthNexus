@@ -8,8 +8,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
-import org.proj.dto.PageResponse;
-import org.proj.dto.AuditLogResponse;
 
 import jakarta.validation.Valid;
 import java.util.List;
@@ -30,6 +28,19 @@ public class AdminController {
         throw new IllegalStateException("Not authenticated as a valid user");
     }
 
+    @PutMapping("/doctors/{id}/verification")
+    public ResponseEntity<DoctorResponse> updateDoctorVerification(
+            @PathVariable UUID id,
+            @Valid @RequestBody DoctorVerificationRequest request,
+            Authentication authentication) {
+
+        return ResponseEntity.ok(
+                adminService.updateDoctorVerification(
+                        id,
+                        request,
+                        getAdminId(authentication)));
+    }
+
     @PutMapping("/doctors/{id}/status")
     public ResponseEntity<DoctorResponse> updateDoctorStatus(
             @PathVariable UUID id,
@@ -46,6 +57,19 @@ public class AdminController {
         return ResponseEntity.ok(adminService.updateHospitalStatus(id, request, getAdminId(authentication)));
     }
 
+    @PutMapping("/hospitals/{id}/verification")
+    public ResponseEntity<HospitalResponse> updateHospitalVerification(
+            @PathVariable UUID id,
+            @Valid @RequestBody HospitalVerificationRequest request,
+            Authentication authentication) {
+
+        return ResponseEntity.ok(
+                adminService.updateHospitalVerification(
+                        id,
+                        request,
+                        getAdminId(authentication)));
+    }
+
     @PutMapping("/users/{id}/toggle-block")
     public ResponseEntity<RegisterResponse> toggleUserBlock(
             @PathVariable UUID id,
@@ -57,6 +81,11 @@ public class AdminController {
     @GetMapping("/analytics")
     public ResponseEntity<AnalyticsResponse> getPlatformAnalytics() {
         return ResponseEntity.ok(adminService.getPlatformAnalytics());
+    }
+
+    @GetMapping("/dashboard/stats")
+    public ResponseEntity<AdminDashboardStatsResponse> getDashboardStats() {
+        return ResponseEntity.ok(adminService.getDashboardStats());
     }
 
     @GetMapping("/settings")

@@ -120,6 +120,7 @@ public class UserServiceImpl implements UserService, UserDetailsService {
                     .role(user.getRole() != null ? user.getRole().getRoleName() : null)
                     .accessToken(jwt)
                     .refreshToken(null)
+                    .lastLogin(user.getLastLogin())
                     .message("Login successful")
                     .build();
         } catch (IllegalArgumentException e) {
@@ -153,7 +154,8 @@ public class UserServiceImpl implements UserService, UserDetailsService {
             List<RegisterResponse> content = userPage.getContent().stream()
                     .map(userMapper::toResponse)
                     .toList();
-            return new PageResponse<>(content, userPage.getNumber(), userPage.getSize(), userPage.getTotalElements(), userPage.getTotalPages(), userPage.isLast());
+            return new PageResponse<>(content, userPage.getNumber(), userPage.getSize(), userPage.getTotalElements(),
+                    userPage.getTotalPages(), userPage.isLast());
         } catch (Exception e) {
             throw new RuntimeException("Unable to fetch user list.", e);
         }
@@ -364,7 +366,6 @@ public class UserServiceImpl implements UserService, UserDetailsService {
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
     }
 
-
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
         return userRepository.findByEmail(username.trim().toLowerCase())
@@ -379,5 +380,20 @@ public class UserServiceImpl implements UserService, UserDetailsService {
     @Override
     public long count() {
         return userRepository.count();
+    }
+
+    @Override
+    public long countByIsActiveTrue() {
+        return userRepository.countByIsActiveTrue();
+    }
+
+    @Override
+    public long countByIsDeletedFalse() {
+        return userRepository.countByIsDeletedFalse();
+    }
+
+    @Override
+    public long countByIsActiveTrueAndIsDeletedFalse() {
+        return userRepository.countByIsActiveTrueAndIsDeletedFalse();
     }
 }

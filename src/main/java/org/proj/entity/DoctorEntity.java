@@ -23,6 +23,12 @@ public class DoctorEntity {
         SUSPENDED
     }
 
+    public enum VerificationStatus {
+        PENDING,
+        APPROVED,
+        REJECTED
+    }
+
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "id", updatable = false, nullable = false, length = 36)
@@ -64,7 +70,35 @@ public class DoctorEntity {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private DoctorStatus status;
+    @Builder.Default
+    private DoctorStatus status = DoctorStatus.ACTIVE;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "verification_status")
+    @Builder.Default
+    private VerificationStatus verificationStatus = VerificationStatus.PENDING;
+
+     @Column(name = "license_verified")
+    @Builder.Default
+    private Boolean licenseVerified = false;
+
+    @Column(name = "degree_verified")
+    @Builder.Default
+    private Boolean degreeVerified = false;
+
+    @Column(name = "specialization_verified")
+    @Builder.Default
+    private Boolean specializationVerified = false;
+
+    @Column(name = "verification_remarks", length = 500)
+    private String verificationRemarks;
+
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    @Column(name = "verified_by", length = 36)
+    private UUID verifiedBy;
+
+    @Column(name = "verified_at")
+    private LocalDateTime verifiedAt;
 
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -78,6 +112,22 @@ public class DoctorEntity {
         this.updatedAt = LocalDateTime.now();
         if (this.status == null) {
             this.status = DoctorStatus.ACTIVE;
+        }
+
+        if (this.verificationStatus == null) {
+            this.verificationStatus = VerificationStatus.PENDING;
+        }
+
+        if (this.licenseVerified == null) {
+            this.licenseVerified = false;
+        }
+
+        if (this.degreeVerified == null) {
+            this.degreeVerified = false;
+        }
+
+        if (this.specializationVerified == null) {
+            this.specializationVerified = false;
         }
     }
 

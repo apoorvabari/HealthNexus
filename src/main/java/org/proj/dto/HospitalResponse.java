@@ -6,8 +6,12 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.proj.entity.HospitalEntity.HospitalType;
 import org.proj.entity.HospitalEntity.HospitalStatus;
+import org.proj.entity.HospitalEntity.VerificationStatus;
 
+import java.time.LocalDateTime;
 import java.util.UUID;
+
+import jakarta.persistence.PrePersist;
 
 @Data
 @Builder
@@ -26,5 +30,44 @@ public class HospitalResponse {
     private HospitalType hospitalType;
     private String registrationNumber;
     private HospitalStatus status;
+    private VerificationStatus verificationStatus;
+
+    private Boolean detailsVerified;
+
+    private Boolean locationVerified;
+
+    private String verificationRemarks;
+    
+    private UUID verifiedBy;
+    
+    private LocalDateTime verifiedAt;
+
     private String message;
+
+    private LocalDateTime createdAt;
+
+    private LocalDateTime updatedAt;
+
+    @PrePersist
+    protected void onCreate() {
+
+        this.createdAt = LocalDateTime.now();
+        this.updatedAt = LocalDateTime.now();
+
+        if (this.status == null) {
+            this.status = HospitalStatus.ACTIVE;
+        }
+
+        if (this.verificationStatus == null) {
+            this.verificationStatus = VerificationStatus.PENDING;
+        }
+
+        if (this.detailsVerified == null) {
+            this.detailsVerified = false;
+        }
+
+        if (this.locationVerified == null) {
+            this.locationVerified = false;
+        }
+    }
 }

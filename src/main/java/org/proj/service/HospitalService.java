@@ -25,4 +25,6 @@ public interface HospitalService {
     void save(HospitalEntity hospital);
 
     long count();
+
+    long countByVerificationStatus(HospitalEntity.VerificationStatus verificationStatus);
 }

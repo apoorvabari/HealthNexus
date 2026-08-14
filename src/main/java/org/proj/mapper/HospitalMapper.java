@@ -30,15 +30,19 @@ public class HospitalMapper {
         if (hospital == null || request == null) {
             return;
         }
-        hospital.setHospitalName(request.getHospitalName() != null ? request.getHospitalName() : hospital.getHospitalName());
+        hospital.setHospitalName(
+                request.getHospitalName() != null ? request.getHospitalName() : hospital.getHospitalName());
         hospital.setEmail(request.getEmail() != null ? request.getEmail() : hospital.getEmail());
-        hospital.setPhoneNumber(request.getPhoneNumber() != null ? request.getPhoneNumber() : hospital.getPhoneNumber());
+        hospital.setPhoneNumber(
+                request.getPhoneNumber() != null ? request.getPhoneNumber() : hospital.getPhoneNumber());
         hospital.setAddress(request.getAddress() != null ? request.getAddress() : hospital.getAddress());
         hospital.setCity(request.getCity() != null ? request.getCity() : hospital.getCity());
         hospital.setState(request.getState() != null ? request.getState() : hospital.getState());
         hospital.setPostalCode(request.getPostalCode() != null ? request.getPostalCode() : hospital.getPostalCode());
-        hospital.setHospitalType(request.getHospitalType() != null ? request.getHospitalType() : hospital.getHospitalType());
-        hospital.setRegistrationNumber(request.getRegistrationNumber() != null ? request.getRegistrationNumber() : hospital.getRegistrationNumber());
+        hospital.setHospitalType(
+                request.getHospitalType() != null ? request.getHospitalType() : hospital.getHospitalType());
+        hospital.setRegistrationNumber(request.getRegistrationNumber() != null ? request.getRegistrationNumber()
+                : hospital.getRegistrationNumber());
         hospital.setStatus(request.getStatus() != null ? request.getStatus() : hospital.getStatus());
     }
 
@@ -59,6 +63,26 @@ public class HospitalMapper {
                 .hospitalType(hospital.getHospitalType())
                 .registrationNumber(hospital.getRegistrationNumber())
                 .status(hospital.getStatus())
+                .verificationStatus(
+                        hospital.getVerificationStatus() != null
+                                ? hospital.getVerificationStatus()
+                                : HospitalEntity.VerificationStatus.PENDING)
+
+                .detailsVerified(
+                        hospital.getDetailsVerified() != null
+                                ? hospital.getDetailsVerified()
+                                : false)
+
+                .locationVerified(
+                        hospital.getLocationVerified() != null
+                                ? hospital.getLocationVerified()
+                                : false)
+
+                .verificationRemarks(hospital.getVerificationRemarks())
+
+                .verifiedBy(hospital.getVerifiedBy())
+
+                .verifiedAt(hospital.getVerifiedAt())
                 .message("Success")
                 .build();
     }
