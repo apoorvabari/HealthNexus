@@ -71,7 +71,7 @@ public class DoctorEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     @Builder.Default
-    private DoctorStatus status = DoctorStatus.ACTIVE;
+    private DoctorStatus status = DoctorStatus.INACTIVE;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "verification_status")
@@ -111,7 +111,7 @@ public class DoctorEntity {
         this.createdAt = LocalDateTime.now();
         this.updatedAt = LocalDateTime.now();
         if (this.status == null) {
-            this.status = DoctorStatus.ACTIVE;
+            this.status = DoctorStatus.INACTIVE;
         }
 
         if (this.verificationStatus == null) {

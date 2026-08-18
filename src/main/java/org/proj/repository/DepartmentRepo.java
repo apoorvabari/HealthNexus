@@ -19,7 +19,7 @@ public interface DepartmentRepo extends JpaRepository<DepartmentEntity, UUID> {
 
     boolean existsByDepartmentCodeAndHospitalIdAndIdNot(String departmentCode, UUID hospitalId, UUID id);
 
-    @Query("SELECT d FROM DepartmentEntity d WHERE " +
+    @Query("SELECT d FROM DepartmentEntity d WHERE d.status != 'INACTIVE' AND " +
             "(:search IS NULL OR :search = '' OR LOWER(d.departmentName) LIKE LOWER(CONCAT('%', :search, '%')) " +
             "OR LOWER(d.departmentCode) LIKE LOWER(CONCAT('%', :search, '%')))")
     Page<DepartmentEntity> searchDepartments(String search, Pageable pageable);

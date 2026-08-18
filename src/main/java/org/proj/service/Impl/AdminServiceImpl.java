@@ -17,6 +17,11 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.regex.Pattern;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -44,6 +49,9 @@ public class AdminServiceImpl implements AdminService {
 
     @Autowired
     private AdminAuditLogRepo auditLogRepo;
+
+    @Autowired
+    private ObjectMapper objectMapper;
 
     @Autowired
     private DoctorMapper doctorMapper;
@@ -283,6 +291,8 @@ public HospitalResponse updateHospitalVerification(
             doctor.setVerificationStatus(
                     DoctorEntity.VerificationStatus.APPROVED);
 
+            doctor.setStatus(DoctorEntity.DoctorStatus.ACTIVE);
+
             doctor.setVerificationRemarks(
                     request.getVerificationRemarks());
 
@@ -310,6 +320,8 @@ public HospitalResponse updateHospitalVerification(
 
             doctor.setVerificationStatus(
                     DoctorEntity.VerificationStatus.REJECTED);
+
+            doctor.setStatus(DoctorEntity.DoctorStatus.INACTIVE);
 
             doctor.setVerificationRemarks(
                     request.getVerificationRemarks().trim());
@@ -359,6 +371,20 @@ public HospitalResponse updateHospitalVerification(
 
         try {
             DoctorEntity.DoctorStatus newStatus = DoctorEntity.DoctorStatus.valueOf(request.getStatus().toUpperCase());
+            
+            if (newStatus == DoctorEntity.DoctorStatus.ACTIVE) {
+                if (doctor.getVerificationStatus() == DoctorEntity.VerificationStatus.PENDING) {
+                    throw new IllegalArgumentException("Cannot activate a doctor whose verification status is PENDING.");
+                }
+                if (doctor.getVerificationStatus() == DoctorEntity.VerificationStatus.REJECTED) {
+                    throw new IllegalArgumentException("Cannot activate a doctor whose verification status is REJECTED.");
+                }
+            } else if (newStatus == DoctorEntity.DoctorStatus.SUSPENDED) {
+                if (doctor.getVerificationStatus() != DoctorEntity.VerificationStatus.APPROVED) {
+                    throw new IllegalArgumentException("Cannot suspend a doctor who is not APPROVED.");
+                }
+            }
+            
             doctor.setStatus(newStatus);
             doctorService.save(doctor);
 
@@ -366,7 +392,7 @@ public HospitalResponse updateHospitalVerification(
 
             return doctorMapper.toResponse(doctor);
         } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Invalid status provided for doctor");
+            throw new IllegalArgumentException(e.getMessage() != null && e.getMessage().contains("Cannot") ? e.getMessage() : "Invalid status provided for doctor");
         }
     }
 
@@ -428,23 +454,51 @@ public HospitalResponse updateHospitalVerification(
     @Override
     @Transactional
     public SystemSettingsResponse updateSystemSetting(SystemSettingsRequest request, UUID adminId) {
-        Optional<AdminSystemSettingsEntity> existingSettingOpt = systemSettingsRepo
-                .findBySettingKey(request.getSettingKey());
-
-        AdminSystemSettingsEntity setting;
-        if (existingSettingOpt.isPresent()) {
-            setting = existingSettingOpt.get();
-            setting.setSettingValue(request.getSettingValue());
-            if (request.getDescription() != null) {
-                setting.setDescription(request.getDescription());
-            }
-        } else {
-            setting = AdminSystemSettingsEntity.builder()
-                    .settingKey(request.getSettingKey())
-                    .settingValue(request.getSettingValue())
-                    .description(request.getDescription())
-                    .build();
+        if (request == null) {
+            throw new IllegalArgumentException("Setting request cannot be null");
         }
+
+        if (request.getSettingKey() == null || request.getSettingKey().trim().isEmpty()) {
+            throw new IllegalArgumentException("Setting key cannot be empty");
+        }
+
+        if (request.getSettingValue() == null || request.getSettingValue().trim().isEmpty()) {
+            throw new IllegalArgumentException("Setting value cannot be empty");
+        }
+
+        String settingKey = request.getSettingKey().trim();
+        String settingValue = request.getSettingValue().trim();
+
+        JsonNode settingsJson;
+        try {
+            settingsJson = objectMapper.readTree(settingValue);
+        } catch (JsonProcessingException e) {
+            throw new IllegalArgumentException("Setting value must contain valid JSON");
+        }
+
+        switch (settingKey) {
+            case "GENERAL_SETTINGS":
+                validateGeneralSettings(settingsJson);
+                break;
+            case "USER_ACCOUNT_SETTINGS":
+                // validateUserAccountSettings(settingsJson);
+                break;
+            case "ROLE_SETTINGS":
+                break;
+            // Allow other keys to be bypassed for now until explicitly required by prompt
+        }
+
+        AdminSystemSettingsEntity setting = systemSettingsRepo.findBySettingKey(settingKey)
+                .orElseGet(AdminSystemSettingsEntity::new);
+
+        setting.setSettingKey(settingKey);
+        setting.setSettingValue(settingValue);
+
+        String desc = request.getDescription();
+        if (desc == null || desc.isBlank()) {
+            desc = "Managed by Admin Portal Settings";
+        }
+        setting.setDescription(desc);
 
         AdminSystemSettingsEntity savedSetting = systemSettingsRepo.save(setting);
         logAuditAction("UPDATE_SETTING", "AdminSystemSettingsEntity", savedSetting.getId(), adminId,
@@ -457,6 +511,44 @@ public HospitalResponse updateHospitalVerification(
                 .description(savedSetting.getDescription())
                 .updatedAt(savedSetting.getUpdatedAt())
                 .build();
+    }
+
+    private void validateGeneralSettings(JsonNode json) {
+        if (!json.hasNonNull("appName") || json.get("appName").asText().trim().isEmpty()) {
+            throw new IllegalArgumentException("Application name is required");
+        }
+        String appName = json.get("appName").asText().trim();
+        if (appName.length() > 100) {
+            throw new IllegalArgumentException("Application name cannot exceed 100 characters");
+        }
+
+        if (!json.hasNonNull("supportEmail") || json.get("supportEmail").asText().trim().isEmpty()) {
+            throw new IllegalArgumentException("Support email is required");
+        }
+        String email = json.get("supportEmail").asText().trim();
+        if (!isValidEmail(email)) {
+            throw new IllegalArgumentException("Support email must be a valid email address");
+        }
+
+        if (json.hasNonNull("supportPhone")) {
+            String phone = json.get("supportPhone").asText().trim();
+            if (!phone.isEmpty() && !phone.matches("^[0-9+()\\\\-\\\\s]{7,20}$")) {
+                throw new IllegalArgumentException("Support phone number is invalid");
+            }
+        }
+
+        if (!json.hasNonNull("language") || json.get("language").asText().trim().isEmpty()) {
+            throw new IllegalArgumentException("Language is required");
+        }
+        String language = json.get("language").asText().trim();
+        // Just keeping English as per the user's snippet
+        // if (!language.equals("English")) {
+        //     throw new IllegalArgumentException("Unsupported language: " + language);
+        // }
+    }
+
+    private boolean isValidEmail(String email) {
+        return Pattern.compile("^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+$").matcher(email).matches();
     }
 
     @Override

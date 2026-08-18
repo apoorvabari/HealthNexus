@@ -27,6 +27,12 @@ public class SecurityConfig {
     @Autowired
     private JwtAuthFilter jwtAuthFilter;
 
+    @Autowired
+    private org.proj.repository.AdminSystemSettingsRepo adminSystemSettingsRepo;
+
+    @Autowired
+    private com.fasterxml.jackson.databind.ObjectMapper objectMapper;
+
 
     @Bean
     @Order(1)
@@ -54,7 +60,8 @@ public class SecurityConfig {
                 )
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authenticationProvider(authenticationProvider)
-                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(new org.proj.security.MaintenanceModeFilter(adminSystemSettingsRepo, objectMapper), JwtAuthFilter.class);
 
         return http.build();
     }

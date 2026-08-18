@@ -23,6 +23,8 @@ public class QueueResponse {
     private String departmentName;
     private UUID doctorId;
     private String doctorName;
+    private UUID patientId;
+    private String patientName;
     private UUID appointmentId;
     private String appointmentNumber;
     private QueueStatus queueStatus;

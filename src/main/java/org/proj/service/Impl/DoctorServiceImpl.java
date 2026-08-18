@@ -98,9 +98,14 @@ public class DoctorServiceImpl implements DoctorService {
 
     @Override
     @Transactional(readOnly = true)
-    public PageResponse<DoctorResponse> getAllDoctors(String search, int page, int size) {
+    public PageResponse<DoctorResponse> getAllDoctors(String search, int page, int size, boolean isAdmin) {
         try {
-            Page<DoctorEntity> doctorPage = doctorRepo.searchDoctors(search, PageRequest.of(page, size));
+            Page<DoctorEntity> doctorPage;
+            if (isAdmin) {
+                doctorPage = doctorRepo.searchDoctors(search, PageRequest.of(page, size));
+            } else {
+                doctorPage = doctorRepo.searchApprovedAndActiveDoctors(search, PageRequest.of(page, size));
+            }
             List<DoctorResponse> content = doctorPage.getContent().stream()
                     .map(doctorMapper::toResponse)
                     .toList();

@@ -41,8 +41,11 @@ public class DoctorController {
     public ResponseEntity<PageResponse<DoctorResponse>> getAllDoctors(
             @RequestParam(required = false) String search,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size) {
-        return ResponseEntity.ok(doctorService.getAllDoctors(search, page, size));
+            @RequestParam(defaultValue = "10") int size,
+            org.springframework.security.core.Authentication authentication) {
+        boolean isAdmin = authentication.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+        return ResponseEntity.ok(doctorService.getAllDoctors(search, page, size, isAdmin));
     }
 
     @GetMapping("/by-account/{accountId}")

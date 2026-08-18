@@ -36,6 +36,14 @@ public class QueueMapper {
             String last = queue.getDoctor().getAccount().getLastName() != null ? queue.getDoctor().getAccount().getLastName() : "";
             doctorName = (first + " " + last).trim();
         }
+        
+        String patientName = "";
+        if (queue.getAppointment() != null && queue.getAppointment().getPatient() != null && queue.getAppointment().getPatient().getAccount() != null) {
+            String first = queue.getAppointment().getPatient().getAccount().getFirstName() != null ? queue.getAppointment().getPatient().getAccount().getFirstName() : "";
+            String last = queue.getAppointment().getPatient().getAccount().getLastName() != null ? queue.getAppointment().getPatient().getAccount().getLastName() : "";
+            patientName = (first + " " + last).trim();
+        }
+        
         return QueueResponse.builder()
                 .id(queue.getId())
                 .queueNumber(queue.getQueueNumber())
@@ -46,6 +54,8 @@ public class QueueMapper {
                 .departmentName(queue.getDepartment() != null ? queue.getDepartment().getDepartmentName() : null)
                 .doctorId(queue.getDoctor() != null ? queue.getDoctor().getId() : null)
                 .doctorName(doctorName)
+                .patientId(queue.getAppointment() != null && queue.getAppointment().getPatient() != null ? queue.getAppointment().getPatient().getId() : null)
+                .patientName(patientName)
                 .appointmentId(queue.getAppointment() != null ? queue.getAppointment().getId() : null)
                 .appointmentNumber(queue.getAppointment() != null ? queue.getAppointment().getAppointmentNumber() : null)
                 .queueStatus(queue.getQueueStatus())

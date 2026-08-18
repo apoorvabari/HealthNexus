@@ -10,6 +10,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.proj.dto.PageResponse;
+import org.proj.dto.DepartmentAnalyticsResponse;
+import org.proj.dto.DoctorResponse;
 
 import java.util.UUID;
 
@@ -51,6 +53,29 @@ public class DepartmentController {
             @PathVariable UUID id,
             @Valid @RequestBody DepartmentRequest request) {
         return ResponseEntity.ok(departmentService.updateDepartment(id, request));
+    }
+
+    @GetMapping("/{id}/doctors")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<PageResponse<DoctorResponse>> getDoctorsByDepartment(
+            @PathVariable UUID id,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+
+        return ResponseEntity.ok(
+                departmentService.getDoctorsByDepartment(
+                        id,
+                        page,
+                        size));
+    }
+
+    @GetMapping("/{id}/analytics")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<DepartmentAnalyticsResponse> getDepartmentAnalytics(
+            @PathVariable UUID id) {
+
+        return ResponseEntity.ok(
+                departmentService.getDepartmentAnalytics(id));
     }
 
     @DeleteMapping("/{id}")

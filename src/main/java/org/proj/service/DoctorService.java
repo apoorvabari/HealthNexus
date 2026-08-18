@@ -15,7 +15,7 @@ public interface DoctorService {
 
     DoctorResponse getDoctorById(UUID id);
 
-    PageResponse<DoctorResponse> getAllDoctors(String search, int page, int size);
+    PageResponse<DoctorResponse> getAllDoctors(String search, int page, int size, boolean isAdmin);
 
 
     DoctorResponse updateDoctor(UUID id, DoctorRequest request);

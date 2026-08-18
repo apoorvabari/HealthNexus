@@ -35,7 +35,7 @@ public class DoctorResponse {
 
     private DoctorStatus status;
 
-     private VerificationStatus verificationStatus;
+    private VerificationStatus verificationStatus;
 
     private Boolean licenseVerified;
     private Boolean degreeVerified;

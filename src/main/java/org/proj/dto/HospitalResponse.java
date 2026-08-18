@@ -37,9 +37,9 @@ public class HospitalResponse {
     private Boolean locationVerified;
 
     private String verificationRemarks;
-    
+
     private UUID verifiedBy;
-    
+
     private LocalDateTime verifiedAt;
 
     private String message;
@@ -68,6 +68,10 @@ public class HospitalResponse {
 
         if (this.locationVerified == null) {
             this.locationVerified = false;
+        }
+
+        if (this.verificationRemarks == null) {
+            this.verificationRemarks = "Not yet Verified";
         }
     }
 }
