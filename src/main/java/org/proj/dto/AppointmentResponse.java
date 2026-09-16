@@ -10,6 +10,7 @@ import org.proj.entity.AppointmentEntity.ConsultationMode;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Data
@@ -36,4 +37,10 @@ public class AppointmentResponse {
     private ConsultationMode consultationMode;
     private String remarks;
     private String message;
+    private LocalDateTime createdAt;
+    private String doctorSpecialization;
+    private java.math.BigDecimal consultationFee;
+    private Integer queueNumber;
+    private String tokenNumber;
+    private String queueStatus;
 }

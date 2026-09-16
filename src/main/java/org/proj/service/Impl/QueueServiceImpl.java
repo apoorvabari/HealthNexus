@@ -1,4 +1,4 @@
-package org.proj.service.Impl;
+package org.proj.service.impl;
 
 import org.proj.dto.QueueRequest;
 import org.proj.dto.QueueResponse;

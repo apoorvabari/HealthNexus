@@ -23,6 +23,9 @@ public class DoctorResponse {
 
     private UUID hospitalId;
     private String hospitalName;
+    private Double hospitalLatitude;
+    private Double hospitalLongitude;
+    private Double distanceKm;
 
     private UUID departmentId;
     private String departmentName;

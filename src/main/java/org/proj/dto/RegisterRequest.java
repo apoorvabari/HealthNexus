@@ -41,9 +41,6 @@ public class RegisterRequest {
     @Size(min = 4, max = 20, message = "Password must be between 4 and 20 characters")
     private String password;
 
-    @NotBlank(message = "Please select a role.")
-    @NotNull
-    @Pattern(regexp = "^(PATIENT|DOCTOR|ADMIN|RECEPTIONIST)$", message = "Invalid role selected. Allowed roles are into capital words: PATIENT, DOCTOR, ADMIN, RECEPTIONIST")
     private String role;
 
     @NotBlank(message = "Please enter phone number.")
@@ -51,12 +48,10 @@ public class RegisterRequest {
     @Pattern(regexp = "^[0-9]{10}$", message = "Phone number must be exactly 10 digits")
     private String phoneNumber;
 
-    @NotNull(message = "Active status is required")
-    @Builder.Default
-    private Boolean isActive = true;
+    private Boolean isActive;
 
-    @NotNull(message = "Deleted status is required")
-    @Builder.Default
-    private Boolean isDeleted = false;
+    private Boolean isDeleted;
+
+    private String profilePicture;
 
 }

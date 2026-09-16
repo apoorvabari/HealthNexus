@@ -27,6 +27,8 @@ public class HospitalResponse {
     private String city;
     private String state;
     private String postalCode;
+    private Double latitude;
+    private Double longitude;
     private HospitalType hospitalType;
     private String registrationNumber;
     private HospitalStatus status;

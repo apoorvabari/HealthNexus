@@ -6,6 +6,7 @@ import org.proj.entity.PatientEntity;
 import org.proj.entity.UserEntity;
 import org.proj.entity.HospitalEntity;
 import org.springframework.stereotype.Component;
+import java.util.UUID;
 
 @Component
 public class PatientMapper {
@@ -62,16 +63,50 @@ public class PatientMapper {
         }
         String accountName = "";
         if (patient.getAccount() != null) {
-            String first = patient.getAccount().getFirstName() != null ? patient.getAccount().getFirstName() : "";
-            String last = patient.getAccount().getLastName() != null ? patient.getAccount().getLastName() : "";
-            accountName = (first + " " + last).trim();
+            try {
+                String first = patient.getAccount().getFirstName() != null ? patient.getAccount().getFirstName() : "";
+                String last = patient.getAccount().getLastName() != null ? patient.getAccount().getLastName() : "";
+                accountName = (first + " " + last).trim();
+            } catch (jakarta.persistence.EntityNotFoundException e) {
+                
+                accountName = "Unknown Account";
+            }
         }
+        
+        UUID accountId = null;
+        if (patient.getAccount() != null) {
+            try {
+                accountId = patient.getAccount().getId();
+            } catch (jakarta.persistence.EntityNotFoundException e) {
+                
+            }
+        }
+        
+        UUID hospitalId = null;
+        String hospitalName = null;
+        if (patient.getHospital() != null) {
+            try {
+                hospitalId = patient.getHospital().getId();
+                hospitalName = patient.getHospital().getHospitalName();
+            } catch (jakarta.persistence.EntityNotFoundException e) {
+                
+            }
+        }
+        
+        String profilePicture = null;
+        if (patient.getAccount() != null) {
+            try {
+                profilePicture = patient.getAccount().getProfilePicture();
+            } catch (jakarta.persistence.EntityNotFoundException e) {
+            }
+        }
+
         return PatientResponse.builder()
                 .id(patient.getId())
-                .accountId(patient.getAccount() != null ? patient.getAccount().getId() : null)
+                .accountId(accountId)
                 .accountName(accountName)
-                .hospitalId(patient.getHospital() != null ? patient.getHospital().getId() : null)
-                .hospitalName(patient.getHospital() != null ? patient.getHospital().getHospitalName() : null)
+                .hospitalId(hospitalId)
+                .hospitalName(hospitalName)
                 .patientCode(patient.getPatientCode())
                 .bloodGroup(patient.getBloodGroup())
                 .gender(patient.getGender())
@@ -84,6 +119,7 @@ public class PatientMapper {
                 .state(patient.getState())
                 .postalCode(patient.getPostalCode())
                 .status(patient.getStatus())
+                .profilePicture(profilePicture)
                 .message("Success")
                 .build();
     }

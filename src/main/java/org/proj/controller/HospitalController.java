@@ -3,6 +3,7 @@ package org.proj.controller;
 import jakarta.validation.Valid;
 import org.proj.dto.HospitalRequest;
 import org.proj.dto.HospitalResponse;
+import org.proj.dto.PublicHospitalResponse;
 import org.proj.service.HospitalService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -26,6 +27,11 @@ public class HospitalController {
             @Valid @RequestBody HospitalRequest request) {
         HospitalResponse response = hospitalService.createHospital(request);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
+    }
+
+    @GetMapping("/public")
+    public ResponseEntity<java.util.List<PublicHospitalResponse>> getPublicHospitals() {
+        return ResponseEntity.ok(hospitalService.getPublicHospitals());
     }
 
     @GetMapping("/{id}")

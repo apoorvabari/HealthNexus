@@ -1,12 +1,10 @@
 package org.proj.controller;
 
 import org.proj.dto.*;
-import org.proj.entity.UserEntity;
 import org.proj.service.AdminService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.validation.Valid;
@@ -21,83 +19,103 @@ public class AdminController {
     @Autowired
     private AdminService adminService;
 
-    private UUID getAdminId(Authentication authentication) {
-        if (authentication != null && authentication.getPrincipal() instanceof UserEntity) {
-            return ((UserEntity) authentication.getPrincipal()).getId();
+    private UUID getCurrentAdminId() {
+        org.proj.entity.UserEntity user = org.proj.security.SecurityUtils.getCurrentUser();
+        if (user == null) {
+            throw new RuntimeException("Unauthorized");
         }
-        throw new IllegalStateException("Not authenticated as a valid user");
+        return user.getId();
     }
 
     @PutMapping("/doctors/{id}/verification")
     public ResponseEntity<DoctorResponse> updateDoctorVerification(
             @PathVariable UUID id,
-            @Valid @RequestBody DoctorVerificationRequest request,
-            Authentication authentication) {
+            @Valid @RequestBody DoctorVerificationRequest request) {
 
         return ResponseEntity.ok(
                 adminService.updateDoctorVerification(
                         id,
                         request,
-                        getAdminId(authentication)));
+                        getCurrentAdminId()));
     }
 
     @PutMapping("/doctors/{id}/status")
     public ResponseEntity<DoctorResponse> updateDoctorStatus(
             @PathVariable UUID id,
-            @Valid @RequestBody StatusUpdateRequest request,
-            Authentication authentication) {
-        return ResponseEntity.ok(adminService.updateDoctorStatus(id, request, getAdminId(authentication)));
+            @Valid @RequestBody StatusUpdateRequest request) {
+
+        return ResponseEntity.ok(
+                adminService.updateDoctorStatus(
+                        id,
+                        request,
+                        getCurrentAdminId()));
     }
 
     @PutMapping("/hospitals/{id}/status")
     public ResponseEntity<HospitalResponse> updateHospitalStatus(
             @PathVariable UUID id,
-            @Valid @RequestBody StatusUpdateRequest request,
-            Authentication authentication) {
-        return ResponseEntity.ok(adminService.updateHospitalStatus(id, request, getAdminId(authentication)));
+            @Valid @RequestBody StatusUpdateRequest request) {
+
+        return ResponseEntity.ok(
+                adminService.updateHospitalStatus(
+                        id,
+                        request,
+                        getCurrentAdminId()));
     }
 
     @PutMapping("/hospitals/{id}/verification")
     public ResponseEntity<HospitalResponse> updateHospitalVerification(
             @PathVariable UUID id,
-            @Valid @RequestBody HospitalVerificationRequest request,
-            Authentication authentication) {
+            @Valid @RequestBody HospitalVerificationRequest request) {
 
         return ResponseEntity.ok(
                 adminService.updateHospitalVerification(
                         id,
                         request,
-                        getAdminId(authentication)));
+                        getCurrentAdminId()));
     }
 
-    @PutMapping("/users/{id}/toggle-block")
+    @PutMapping("/users/{id}/block")
     public ResponseEntity<RegisterResponse> toggleUserBlock(
             @PathVariable UUID id,
-            @RequestParam boolean block,
-            Authentication authentication) {
-        return ResponseEntity.ok(adminService.toggleUserBlock(id, block, getAdminId(authentication)));
+            @RequestParam boolean block) {
+
+        return ResponseEntity.ok(
+                adminService.toggleUserBlock(
+                        id,
+                        block,
+                        getCurrentAdminId()));
     }
 
     @GetMapping("/analytics")
     public ResponseEntity<AnalyticsResponse> getPlatformAnalytics() {
-        return ResponseEntity.ok(adminService.getPlatformAnalytics());
+
+        return ResponseEntity.ok(
+                adminService.getPlatformAnalytics());
     }
 
     @GetMapping("/dashboard/stats")
     public ResponseEntity<AdminDashboardStatsResponse> getDashboardStats() {
-        return ResponseEntity.ok(adminService.getDashboardStats());
+
+        return ResponseEntity.ok(
+                adminService.getDashboardStats());
     }
 
     @GetMapping("/settings")
     public ResponseEntity<List<SystemSettingsResponse>> getAllSystemSettings() {
-        return ResponseEntity.ok(adminService.getAllSystemSettings());
+
+        return ResponseEntity.ok(
+                adminService.getAllSystemSettings());
     }
 
     @PutMapping("/settings")
     public ResponseEntity<SystemSettingsResponse> updateSystemSetting(
-            @Valid @RequestBody SystemSettingsRequest request,
-            Authentication authentication) {
-        return ResponseEntity.ok(adminService.updateSystemSetting(request, getAdminId(authentication)));
+            @Valid @RequestBody SystemSettingsRequest request) {
+
+        return ResponseEntity.ok(
+                adminService.updateSystemSetting(
+                        request,
+                        getCurrentAdminId()));
     }
 
     @GetMapping("/audit-logs")
@@ -106,6 +124,11 @@ public class AdminController {
             @RequestParam(required = false) String search,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
-        return ResponseEntity.ok(adminService.getAuditLogs(search, page, size));
+
+        return ResponseEntity.ok(
+                adminService.getAuditLogs(
+                        search,
+                        page,
+                        size));
     }
 }

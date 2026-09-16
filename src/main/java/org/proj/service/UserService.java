@@ -27,13 +27,19 @@ public interface UserService {
 
 	void deleteUser(UUID id);
 
-	LogoutResponse logout(String userId);
+	LogoutResponse logout();
 
 	List<RegisterResponse> filterUsers(UserFilterRequest filterRequest);
 
 	void updateLastLogin(String email);
 
+	void requestPasswordReset(String email);
+
 	void resetPassword(PasswordResetRequest request);
+
+	void verifyEmail(String token);
+
+	void resendVerification(String email);
 
 	RegisterResponse getUserByEmail(String email);
 

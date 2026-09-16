@@ -36,6 +36,10 @@ public class AdminAuditLogEntity {
     @JdbcTypeCode(SqlTypes.VARCHAR)
     private UUID performedBy;
 
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "hospital_id", nullable = false)
+    private HospitalEntity hospital;
+
     @Lob
     @JdbcTypeCode(SqlTypes.LONGVARCHAR)
     private String details;

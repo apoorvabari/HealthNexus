@@ -2,6 +2,7 @@ package org.proj.controller;
 
 import jakarta.validation.Valid;
 import org.proj.dto.AppointmentRequest;
+import org.proj.dto.PatientAppointmentRequest;
 import org.proj.dto.AppointmentResponse;
 import org.proj.service.AppointmentService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,8 +26,12 @@ public class AppointmentController {
     @PreAuthorize("hasAnyRole('ADMIN', 'RECEPTIONIST', 'PATIENT')")
     public ResponseEntity<AppointmentResponse> createAppointment(
             @Valid @RequestBody AppointmentRequest request) {
-        AppointmentResponse response = appointmentService.createAppointment(request);
-        return new ResponseEntity<>(response, HttpStatus.CREATED);
+        try {
+            AppointmentResponse response = appointmentService.createAppointment(request);
+            return new ResponseEntity<>(response, HttpStatus.CREATED);
+        } catch (Exception e) {
+            throw e;
+        }
     }
 
     @GetMapping("/{id}")
@@ -37,17 +42,25 @@ public class AppointmentController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'PATIENT', 'RECEPTIONIST')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEPTIONIST')")
     public ResponseEntity<List<AppointmentResponse>> getAllAppointments() {
         return ResponseEntity.ok(appointmentService.getAllAppointments());
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'RECEPTIONIST','PATIENT')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEPTIONIST')")
     public ResponseEntity<AppointmentResponse> updateAppointment(
             @PathVariable UUID id,
             @Valid @RequestBody AppointmentRequest request) {
         return ResponseEntity.ok(appointmentService.updateAppointment(id, request));
+    }
+
+    @PutMapping("/patient/{id}")
+    @PreAuthorize("hasRole('PATIENT')")
+    public ResponseEntity<AppointmentResponse> updateAppointmentAsPatient(
+            @PathVariable UUID id,
+            @Valid @RequestBody PatientAppointmentRequest request) {
+        return ResponseEntity.ok(appointmentService.updateAppointmentAsPatient(id, request));
     }
 
     @DeleteMapping("/{id}")
@@ -76,5 +89,13 @@ public class AppointmentController {
     public ResponseEntity<List<AppointmentResponse>> getAppointmentsByPatient(
             @PathVariable UUID patientId) {
         return ResponseEntity.ok(appointmentService.getAppointmentsByPatient(patientId));
+    }
+
+    @GetMapping("/slots")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DOCTOR', 'RECEPTIONIST', 'PATIENT')")
+    public ResponseEntity<List<java.time.LocalTime>> getAvailableSlots(
+            @RequestParam UUID doctorId,
+            @RequestParam @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate date) {
+        return ResponseEntity.ok(appointmentService.getAvailableSlots(doctorId, date));
     }
 }

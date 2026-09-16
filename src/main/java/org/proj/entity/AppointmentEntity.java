@@ -85,6 +85,11 @@ public class AppointmentEntity {
     @EqualsAndHashCode.Exclude
     private ReceptionistEntity bookedByReceptionist;
 
+    @OneToOne(mappedBy = "appointment", fetch = FetchType.LAZY)
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    private QueueEntity queue;
+
     @Column(nullable = false)
     private LocalDate appointmentDate;
 
@@ -109,6 +114,13 @@ public class AppointmentEntity {
 
     @Column(length = 500)
     private String remarks;
+
+    /**
+     * Timestamp of the appointment reminder notification.
+     * Null means the reminder has not been sent yet.
+     */
+    @Column
+    private LocalDateTime appointmentReminderSentAt;
 
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;

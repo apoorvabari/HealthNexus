@@ -21,7 +21,20 @@ public interface PatientService {
 
     PatientEntity findPatientById(UUID patientId);
 
+    PatientEntity findPatientByAccountId(UUID accountId);
+
+    PatientEntity findPatientByAccountIdAndHospitalId(
+            UUID accountId,
+            UUID hospitalId
+    );
+
+    PatientEntity findPatientByIdAndHospitalId(
+            UUID patientId,
+            UUID hospitalId);
+
     PatientResponse getPatientByAccountId(UUID accountId);
+
+    PatientResponse getMyProfile();
 
     long count();
 }

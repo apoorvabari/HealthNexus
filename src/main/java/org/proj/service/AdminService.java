@@ -7,7 +7,6 @@ import java.util.UUID;
 
 public interface AdminService {
 
-    // Doctor Management
     DoctorResponse updateDoctorStatus(
             UUID doctorId,
             StatusUpdateRequest request,
@@ -18,7 +17,6 @@ public interface AdminService {
             DoctorVerificationRequest request,
             UUID adminId);
 
-    // Hospital Management
     HospitalResponse updateHospitalStatus(
             UUID hospitalId,
             StatusUpdateRequest request,
@@ -29,23 +27,23 @@ public interface AdminService {
             HospitalVerificationRequest request,
             UUID adminId);
 
-    // User Management
     RegisterResponse toggleUserBlock(
-            UUID userId, boolean block, UUID adminId);
+            UUID userId,
+            boolean block,
+            UUID adminId);
 
-    // Analytics
     AnalyticsResponse getPlatformAnalytics();
+
     AdminDashboardStatsResponse getDashboardStats();
 
-    // System Settings
     SystemSettingsResponse updateSystemSetting(
-            SystemSettingsRequest request, 
+            SystemSettingsRequest request,
             UUID adminId);
 
     List<SystemSettingsResponse> getAllSystemSettings();
 
-    // Audit Logs
     PageResponse<AuditLogResponse> getAuditLogs(
-        String search, int page, int size
-    );
+            String search,
+            int page,
+            int size);
 }

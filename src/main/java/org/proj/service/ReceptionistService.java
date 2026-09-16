@@ -22,4 +22,10 @@ public interface ReceptionistService {
     ReceptionistEntity findReceptionistById(UUID bookedByReceptionistId);
 
     ReceptionistResponse getReceptionistByAccountId(UUID accountId);
+
+    java.util.Optional<ReceptionistEntity> findReceptionistEntityByAccountId(UUID accountId);
+
+    void callPatient(UUID patientId, String customMessage);
+
+    org.proj.dto.PatientResponse registerWalkInPatient(org.proj.dto.WalkInPatientRegistrationRequest request);
 }

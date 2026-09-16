@@ -1,6 +1,7 @@
 package org.proj.mapper;
 
 import org.proj.dto.DoctorResponse;
+import org.proj.dto.PublicDoctorResponse;
 import org.proj.dto.DoctorRequest;
 import org.proj.entity.DoctorEntity;
 import org.proj.entity.UserEntity;
@@ -75,6 +76,8 @@ public class DoctorMapper {
                 .accountName(accountName)
                 .hospitalId(doctor.getHospital() != null ? doctor.getHospital().getId() : null)
                 .hospitalName(doctor.getHospital() != null ? doctor.getHospital().getHospitalName() : null)
+                .hospitalLatitude(doctor.getHospital() != null ? doctor.getHospital().getLatitude() : null)
+                .hospitalLongitude(doctor.getHospital() != null ? doctor.getHospital().getLongitude() : null)
                 .departmentId(doctor.getDepartment() != null ? doctor.getDepartment().getId() : null)
                 .departmentName(doctor.getDepartment() != null ? doctor.getDepartment().getDepartmentName() : null)
                 .specialization(doctor.getSpecialization())
@@ -108,6 +111,31 @@ public class DoctorMapper {
                 .verifiedAt(doctor.getVerifiedAt())
 
                 .message("Success")
+                .build();
+    }
+
+    public PublicDoctorResponse toPublicResponse(DoctorEntity doctor) {
+        if (doctor == null) {
+            return null;
+        }
+        String doctorName = "";
+        if (doctor.getAccount() != null) {
+            String first = doctor.getAccount().getFirstName() != null ? doctor.getAccount().getFirstName() : "";
+            String last = doctor.getAccount().getLastName() != null ? doctor.getAccount().getLastName() : "";
+            doctorName = (first + " " + last).trim();
+        }
+        return PublicDoctorResponse.builder()
+                .id(doctor.getId())
+                .hospitalId(doctor.getHospital() != null ? doctor.getHospital().getId() : null)
+                .hospitalName(doctor.getHospital() != null ? doctor.getHospital().getHospitalName() : null)
+                .departmentId(doctor.getDepartment() != null ? doctor.getDepartment().getId() : null)
+                .departmentName(doctor.getDepartment() != null ? doctor.getDepartment().getDepartmentName() : null)
+                .doctorName(doctorName)
+                .specialization(doctor.getSpecialization())
+                .qualification(doctor.getQualification())
+                .experience(doctor.getExperience())
+                .consultationFee(doctor.getConsultationFee())
+                .status(doctor.getStatus())
                 .build();
     }
 }

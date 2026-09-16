@@ -1,4 +1,4 @@
-package org.proj.service.Impl;
+package org.proj.service.impl;
 
 import org.proj.dto.*;
 import org.proj.entity.*;
@@ -13,7 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Optional;
+
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -540,9 +540,8 @@ public HospitalResponse updateHospitalVerification(
         if (!json.hasNonNull("language") || json.get("language").asText().trim().isEmpty()) {
             throw new IllegalArgumentException("Language is required");
         }
-        String language = json.get("language").asText().trim();
         // Just keeping English as per the user's snippet
-        // if (!language.equals("English")) {
+        // if (!json.get("language").asText().trim().equals("English")) {
         //     throw new IllegalArgumentException("Unsupported language: " + language);
         // }
     }

@@ -11,6 +11,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.proj.dto.PageResponse;
 
+import java.math.BigDecimal;
 import java.util.UUID;
 
 @RestController
@@ -27,6 +28,54 @@ public class DoctorController {
             @Valid @RequestBody DoctorRequest request) {
         DoctorResponse response = doctorService.createDoctor(request);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
+    }
+
+    @GetMapping("/patient/search")
+    @PreAuthorize("hasRole('PATIENT')")
+    public ResponseEntity<PageResponse<DoctorResponse>> searchDoctorsForPatient(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String specialization,
+            @RequestParam(required = false) UUID hospitalId,
+            @RequestParam(required = false) UUID departmentId,
+            @RequestParam(required = false) BigDecimal maxFee,
+            @RequestParam(required = false) Integer minExperience,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+
+        return ResponseEntity.ok(
+                doctorService.searchDoctorsForPatient(
+                        search,
+                        specialization,
+                        hospitalId,
+                        departmentId,
+                        maxFee,
+                        minExperience,
+                        page,
+                        size));
+    }
+
+    @GetMapping("/nearby")
+    @PreAuthorize("hasRole('PATIENT')")
+    public ResponseEntity<PageResponse<DoctorResponse>> getNearbyDoctors(
+            @RequestParam double latitude,
+            @RequestParam double longitude,
+            @RequestParam(defaultValue = "10.0") double radiusKm,
+            @RequestParam(required = false) String specialization,
+            @RequestParam(required = false) BigDecimal maxFee,
+            @RequestParam(required = false) Integer minExperience,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+
+        return ResponseEntity.ok(
+                doctorService.getNearbyDoctors(
+                        latitude,
+                        longitude,
+                        radiusKm,
+                        specialization,
+                        maxFee,
+                        minExperience,
+                        page,
+                        size));
     }
 
     @GetMapping("/{id}")
@@ -69,4 +118,5 @@ public class DoctorController {
         doctorService.deleteDoctor(id);
         return ResponseEntity.ok("Doctor profile deactivated successfully");
     }
+
 }

@@ -1,6 +1,7 @@
 package org.proj.service;
 
 import org.proj.dto.AppointmentRequest;
+import org.proj.dto.PatientAppointmentRequest;
 import org.proj.dto.AppointmentResponse;
 import org.proj.entity.AppointmentEntity;
 
@@ -17,6 +18,8 @@ public interface AppointmentService {
 
     AppointmentResponse updateAppointment(UUID id, AppointmentRequest request);
 
+    AppointmentResponse updateAppointmentAsPatient(UUID id, PatientAppointmentRequest request);
+
     void deleteAppointment(UUID id);
 
     List<AppointmentResponse> getTodayAppointments();
@@ -25,6 +28,8 @@ public interface AppointmentService {
 
     List<AppointmentResponse> getAppointmentsByPatient(UUID patientId);
 
+    List<java.time.LocalTime> getAvailableSlots(UUID doctorId, java.time.LocalDate date);
+
     AppointmentEntity findAppointmentById(UUID appointmentId);
 
     void save(AppointmentEntity app);
@@ -32,4 +37,8 @@ public interface AppointmentService {
     long count();
 
     long countByAppointmentDate(java.time.LocalDate date);
+
+    boolean existsByDoctorIdAndPatientId(UUID doctorId, UUID patientId);
+
+    boolean existsByDoctorIdAndPatientIdAndHospitalId(UUID doctorId, UUID patientId, UUID hospitalId);
 }

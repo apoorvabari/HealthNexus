@@ -2,6 +2,7 @@ package org.proj.service;
 
 import org.proj.dto.HospitalRequest;
 import org.proj.dto.HospitalResponse;
+import org.proj.dto.PublicHospitalResponse;
 import org.proj.entity.HospitalEntity;
 
 import java.util.UUID;
@@ -15,6 +16,8 @@ public interface HospitalService {
     HospitalResponse getHospitalById(UUID id);
 
     PageResponse<HospitalResponse> getAllHospitals(String search, int page, int size);
+
+    java.util.List<PublicHospitalResponse> getPublicHospitals();
 
     HospitalResponse updateHospital(UUID id, HospitalRequest request);
 

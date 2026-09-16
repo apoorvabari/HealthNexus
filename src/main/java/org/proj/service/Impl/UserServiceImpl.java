@@ -1,4 +1,4 @@
-package org.proj.service.Impl;
+package org.proj.service.impl;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -220,18 +220,30 @@ public class UserServiceImpl implements UserService, UserDetailsService {
     }
 
     @Override
-    public LogoutResponse logout(String userId) {
+    public LogoutResponse logout() {
         try {
             LogoutResponse response = new LogoutResponse();
-            if (userId != null && !userId.isBlank()) {
-                response.setMessage("Logged out successfully for user " + userId);
-            } else {
-                response.setMessage("Logged out successfully");
-            }
+            response.setMessage("Logged out successfully");
             return response;
         } catch (Exception e) {
             throw new RuntimeException("Unable to logout.");
         }
+    }
+
+    @Override
+    public void requestPasswordReset(String email) {
+        throw new UnsupportedOperationException("Not implemented yet");
+    }
+
+
+    @Override
+    public void verifyEmail(String token) {
+        throw new UnsupportedOperationException("Not implemented yet");
+    }
+
+    @Override
+    public void resendVerification(String email) {
+        throw new UnsupportedOperationException("Not implemented yet");
     }
 
     @Override

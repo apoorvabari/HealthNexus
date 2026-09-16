@@ -100,6 +100,12 @@ public class AppointmentMapper {
                 .appointmentStatus(appointment.getAppointmentStatus())
                 .consultationMode(appointment.getConsultationMode())
                 .remarks(appointment.getRemarks())
+                .createdAt(appointment.getCreatedAt())
+                .doctorSpecialization(appointment.getDoctor() != null ? appointment.getDoctor().getSpecialization() : null)
+                .consultationFee(appointment.getDoctor() != null ? appointment.getDoctor().getConsultationFee() : null)
+                .queueNumber(appointment.getQueue() != null ? appointment.getQueue().getQueueNumber() : null)
+                .tokenNumber(appointment.getQueue() != null ? appointment.getQueue().getTokenNumber() : null)
+                .queueStatus(appointment.getQueue() != null && appointment.getQueue().getQueueStatus() != null ? appointment.getQueue().getQueueStatus().name() : null)
                 .message("Success")
                 .build();
     }

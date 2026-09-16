@@ -33,5 +33,6 @@ public class PatientResponse {
     private String state;
     private String postalCode;
     private PatientStatus status;
+    private String profilePicture;
     private String message;
 }

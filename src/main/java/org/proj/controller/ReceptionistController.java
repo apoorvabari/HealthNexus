@@ -22,7 +22,7 @@ public class ReceptionistController {
     private ReceptionistService receptionistService;
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'RECEPTIONIST')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ReceptionistResponse> createReceptionist(
             @Valid @RequestBody ReceptionistRequest request) {
         ReceptionistResponse response = receptionistService.createReceptionist(request);
@@ -62,5 +62,20 @@ public class ReceptionistController {
             @PathVariable UUID id) {
         receptionistService.deleteReceptionist(id);
         return ResponseEntity.ok("Receptionist profile deactivated successfully");
+    }
+
+    @PostMapping("/call-patient")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEPTIONIST')")
+    public ResponseEntity<String> callPatient(@RequestParam UUID patientId, @RequestParam(required = false) String message) {
+        receptionistService.callPatient(patientId, message);
+        return ResponseEntity.ok("Patient call notification sent successfully");
+    }
+
+    @PostMapping("/register-walkin")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEPTIONIST')")
+    public ResponseEntity<org.proj.dto.PatientResponse> registerWalkInPatient(
+            @Valid @RequestBody org.proj.dto.WalkInPatientRegistrationRequest request) {
+        org.proj.dto.PatientResponse response = receptionistService.registerWalkInPatient(request);
+        return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
 }

@@ -1,21 +1,25 @@
 package org.proj.exception;
 
-import org.proj.dto.RegisterResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.FieldError;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+import jakarta.persistence.EntityNotFoundException;
+import java.util.HashMap;
+import java.util.Map;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<RegisterResponse> handleIllegalArgumentException(
+    public ResponseEntity<Map<String, Object>> handleIllegalArgumentException(
             IllegalArgumentException ex) {
 
-        RegisterResponse response = new RegisterResponse();
-
-        response.setMessage(ex.getMessage());
+        Map<String, Object> response = new HashMap<>();
+        response.put("message", ex.getMessage());
 
         HttpStatus status = HttpStatus.BAD_REQUEST;
         if (ex.getMessage() != null) {
@@ -27,44 +31,55 @@ public class GlobalExceptionHandler {
         }
 
         return new ResponseEntity<>(response, status);
-
     }
 
-    @ExceptionHandler(org.springframework.web.bind.MethodArgumentNotValidException.class)
-    public ResponseEntity<RegisterResponse> handleValidationException(
-            org.springframework.web.bind.MethodArgumentNotValidException ex) {
-        String defaultMessage = ex.getBindingResult().getFieldErrors().stream()
-                .map(org.springframework.validation.FieldError::getDefaultMessage)
-                .findFirst()
-                .orElse("Validation failed");
-
-        RegisterResponse response = RegisterResponse.builder()
-                .message(defaultMessage)
-                .build();
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<Map<String, Object>> handleValidationException(
+            MethodArgumentNotValidException ex) {
+        
+        Map<String, Object> response = new HashMap<>();
+        Map<String, String> errors = new HashMap<>();
+        
+        ex.getBindingResult().getAllErrors().forEach((error) -> {
+            String fieldName = ((FieldError) error).getField();
+            String errorMessage = error.getDefaultMessage();
+            errors.put(fieldName, errorMessage);
+        });
+        
+        response.put("message", "Validation Failed");
+        response.put("errors", errors);
 
         return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
     }
 
+    @ExceptionHandler(EntityNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleEntityNotFoundException(
+            EntityNotFoundException ex) {
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("message", ex.getMessage() != null ? ex.getMessage() : "Resource not found");
+
+        return new ResponseEntity<>(response, HttpStatus.NOT_FOUND);
+    }
+
     @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
-    public ResponseEntity<RegisterResponse> handleAccessDeniedException(
+    public ResponseEntity<Map<String, Object>> handleAccessDeniedException(
             org.springframework.security.access.AccessDeniedException ex) {
 
-        RegisterResponse response = new RegisterResponse();
-        response.setMessage("Access Denied: " + ex.getMessage());
+        Map<String, Object> response = new HashMap<>();
+        response.put("message", "Access Denied: " + ex.getMessage());
 
         return new ResponseEntity<>(response, HttpStatus.FORBIDDEN);
     }
 
     @ExceptionHandler(RuntimeException.class)
-    public ResponseEntity<RegisterResponse> handleRuntimeException(
+    public ResponseEntity<Map<String, Object>> handleRuntimeException(
             RuntimeException ex) {
 
-        RegisterResponse response = new RegisterResponse();
-
-        response.setMessage(ex.getMessage());
+        Map<String, Object> response = new HashMap<>();
+        response.put("message", ex.getMessage() != null ? ex.getMessage() : "Internal Server Error");
 
         return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
-
     }
 
 }

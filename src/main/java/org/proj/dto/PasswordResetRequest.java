@@ -20,6 +20,10 @@ public class PasswordResetRequest {
     @Email(message = "Enter a valid email address")
     private String email;
 
+    @NotBlank(message = "Reset token is required")
+    @NotNull
+    private String token;
+
     @NotBlank(message = "New password is required")
     @NotNull
     @Size(min = 4, max = 20, message = "Password must be between 4 and 20 characters")

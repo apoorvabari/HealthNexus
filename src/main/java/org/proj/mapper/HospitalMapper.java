@@ -20,6 +20,8 @@ public class HospitalMapper {
                 .city(request.getCity())
                 .state(request.getState())
                 .postalCode(request.getPostalCode())
+                .latitude(request.getLatitude())
+                .longitude(request.getLongitude())
                 .hospitalType(request.getHospitalType())
                 .registrationNumber(request.getRegistrationNumber())
                 .status(request.getStatus() != null ? request.getStatus() : HospitalEntity.HospitalStatus.ACTIVE)
@@ -39,6 +41,12 @@ public class HospitalMapper {
         hospital.setCity(request.getCity() != null ? request.getCity() : hospital.getCity());
         hospital.setState(request.getState() != null ? request.getState() : hospital.getState());
         hospital.setPostalCode(request.getPostalCode() != null ? request.getPostalCode() : hospital.getPostalCode());
+        if (request.getLatitude() != null) {
+            hospital.setLatitude(request.getLatitude());
+        }
+        if (request.getLongitude() != null) {
+            hospital.setLongitude(request.getLongitude());
+        }
         hospital.setHospitalType(
                 request.getHospitalType() != null ? request.getHospitalType() : hospital.getHospitalType());
         hospital.setRegistrationNumber(request.getRegistrationNumber() != null ? request.getRegistrationNumber()
@@ -60,6 +68,8 @@ public class HospitalMapper {
                 .city(hospital.getCity())
                 .state(hospital.getState())
                 .postalCode(hospital.getPostalCode())
+                .latitude(hospital.getLatitude())
+                .longitude(hospital.getLongitude())
                 .hospitalType(hospital.getHospitalType())
                 .registrationNumber(hospital.getRegistrationNumber())
                 .status(hospital.getStatus())

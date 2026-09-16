@@ -22,12 +22,10 @@ public class PatientRequest {
     @NotNull(message = "Account ID is required")
     private UUID accountId;
 
-    @NotNull(message = "Hospital ID is required")
+    // For ADMIN/RECEPTIONIST, hospital is derived from tenant context.
+    // PATIENT self-registration may supply a hospital.
     private UUID hospitalId;
 
-    @NotBlank(message = "Patient code is required")
-    @Size(min = 3, max = 20, message = "Patient code must be between 3 and 20 characters")
-    @Pattern(regexp = "^[A-Za-z0-9]+$", message = "Patient code must contain only alphanumeric characters")
     private String patientCode;
 
     @NotNull(message = "Blood group is required")

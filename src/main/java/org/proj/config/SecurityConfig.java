@@ -34,11 +34,20 @@ public class SecurityConfig {
     private com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
 
+
     @Bean
     @Order(1)
     public SecurityFilterChain publicSecurityFilterChain(HttpSecurity http) throws Exception {
         http
-                .securityMatcher("/api/users/register", "/api/users/login", "/api/users/reset-password")
+                .securityMatcher(
+                        "/api/users/register",
+                        "/api/users/login",
+                        "/api/users/reset-password",
+                        "/api/users/forgot-password",
+                        "/api/users/verify-email",
+                        "/api/users/resend-verification",
+                        "/api/hospitals/public"
+                )
                 .cors(Customizer.withDefaults())
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
@@ -61,16 +70,29 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authenticationProvider(authenticationProvider)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterAfter(new org.proj.security.MaintenanceModeFilter(adminSystemSettingsRepo, objectMapper), JwtAuthFilter.class);
+                .addFilterAfter(
+                    new org.proj.security.MaintenanceModeFilter(
+                        adminSystemSettingsRepo,
+                        objectMapper
+                    ),
+                    JwtAuthFilter.class
+        );
 
         return http.build();
     }
 
    
+    @org.springframework.beans.factory.annotation.Value("${app.cors.allowed-origins:http://localhost:8081,http://localhost:19006,http://localhost:8080,http://localhost:3000}")
+    private String allowedOrigins;
+
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOriginPatterns(List.of("*"));
+        List<String> origins = java.util.Arrays.stream(allowedOrigins.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .collect(java.util.stream.Collectors.toList());
+        configuration.setAllowedOrigins(origins);
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(true);

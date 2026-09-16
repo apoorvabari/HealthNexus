@@ -1,0 +1,13 @@
+package org.proj.repository;
+
+import org.proj.entity.PrescriptionMedicineEntity;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+import java.util.UUID;
+
+@Repository
+public interface PrescriptionMedicineRepo extends JpaRepository<PrescriptionMedicineEntity, UUID> {
+    List<PrescriptionMedicineEntity> findByPrescriptionId(UUID prescriptionId);
+}

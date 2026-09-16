@@ -38,6 +38,10 @@ public class HospitalRequest {
     @Pattern(regexp = "^[0-9]{6}$", message = "PIN code must be exactly 6 digits")
     private String postalCode;
 
+    private Double latitude;
+
+    private Double longitude;
+
     @NotNull(message = "Hospital type is required")
     private HospitalType hospitalType;
 

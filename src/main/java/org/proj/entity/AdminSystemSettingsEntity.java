@@ -9,7 +9,15 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "admin_system_settings")
+@Table(
+        name = "admin_system_settings",
+        uniqueConstraints = {
+                @UniqueConstraint(
+                        name = "uk_admin_system_settings_hospital_key",
+                        columnNames = {"hospital_id", "setting_key"}
+                )
+        }
+)
 @Data
 @Builder
 @NoArgsConstructor
@@ -22,7 +30,13 @@ public class AdminSystemSettingsEntity {
     @JdbcTypeCode(SqlTypes.VARCHAR)
     private UUID id;
 
-    @Column(nullable = false, unique = true)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "hospital_id", nullable = false)
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    private HospitalEntity hospital;
+
+    @Column(name = "setting_key", nullable = false)
     private String settingKey;
 
     @Lob

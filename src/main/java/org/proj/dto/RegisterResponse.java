@@ -24,5 +24,6 @@ public class RegisterResponse {
     private Boolean isActive;
     private Boolean isDeleted;
     private LocalDateTime lastLogin;
+    private String profilePicture;
     private String message;
 }
