@@ -46,11 +46,6 @@ public interface HospitalRepo extends JpaRepository<HospitalEntity, UUID> {
             HospitalEntity.VerificationStatus status
     );
 
-    /*
-     * Basic hospital lookup.
-     *
-     * Authorization is handled by the service layer.
-     */
     @Query("""
             SELECT h
             FROM HospitalEntity h
@@ -60,11 +55,6 @@ public interface HospitalRepo extends JpaRepository<HospitalEntity, UUID> {
             UUID hospitalId
     );
 
-    /*
-     * Used for DOCTOR / RECEPTIONIST / PATIENT.
-     *
-     * They have one hospital context.
-     */
     @Query("""
             SELECT h
             FROM HospitalEntity h
@@ -83,13 +73,6 @@ public interface HospitalRepo extends JpaRepository<HospitalEntity, UUID> {
             Pageable pageable
     );
 
-    /*
-     * ADMIN can own multiple hospitals.
-     *
-     * Therefore ADMIN hospital listing must be based
-     * on ADMIN -> HOSPITAL assignments, not on the
-     * currently selected hospital.
-     */
     @Query("""
             SELECT h
             FROM HospitalEntity h

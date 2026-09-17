@@ -36,7 +36,6 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
                 .setAllowedOrigins(origins)
                 .withSockJS();
         
-        // Also add without SockJS for pure WebSocket clients like @stomp/stompjs in React Native
         registry.addEndpoint("/ws-healthnexus")
                 .setAllowedOrigins(origins);
     }

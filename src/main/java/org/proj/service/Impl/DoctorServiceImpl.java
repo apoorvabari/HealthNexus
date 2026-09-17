@@ -59,10 +59,6 @@ public class DoctorServiceImpl implements DoctorService {
                 throw new IllegalArgumentException("Hospital ID is required");
             }
 
-            /*
-             * The authenticated tenant is authoritative.
-             * Client cannot create a doctor in another hospital.
-             */
             if (!currentHospitalId.equals(request.getHospitalId())) {
                 throw new AccessDeniedException(
                         "You cannot create a doctor for another hospital");
@@ -72,9 +68,6 @@ public class DoctorServiceImpl implements DoctorService {
                 throw new IllegalArgumentException("Account ID is required");
             }
 
-            /*
-             * A doctor can create only their own doctor profile.
-             */
             if ("DOCTOR".equals(role)
                     && !currentUser.getId().equals(request.getAccountId())) {
 
@@ -202,11 +195,6 @@ public class DoctorServiceImpl implements DoctorService {
                         "Minimum experience cannot be negative");
             }
 
-            /*
-             * SECURITY:
-             * Never trust hospitalId supplied by the patient.
-             * Patient search is restricted to authenticated tenant.
-             */
             UUID currentHospitalId =
                     requireCurrentHospital();
 
@@ -345,9 +333,6 @@ public class DoctorServiceImpl implements DoctorService {
             UUID currentHospitalId =
                     requireCurrentHospital();
 
-            /*
-             * Database-level tenant filtering.
-             */
             DoctorEntity doctor =
                     doctorRepo.findByIdAndHospitalId(
                             id,
@@ -479,9 +464,6 @@ public class DoctorServiceImpl implements DoctorService {
             UUID currentHospitalId =
                     requireCurrentHospital();
 
-            /*
-             * Database-level tenant validation.
-             */
             DoctorEntity doctor =
                     doctorRepo.findByIdAndHospitalId(
                             id,
@@ -490,9 +472,6 @@ public class DoctorServiceImpl implements DoctorService {
                                     new AccessDeniedException(
                                             "You are not authorized to update a doctor from another hospital"));
 
-            /*
-             * Doctor can update only their own profile.
-             */
             if ("DOCTOR".equals(role)
                     && (doctor.getAccount() == null
                     || !doctor.getAccount()
@@ -503,9 +482,6 @@ public class DoctorServiceImpl implements DoctorService {
                         "You are not authorized to update another doctor's profile");
             }
 
-            /*
-             * Hospital ownership is immutable.
-             */
             if (request.getHospitalId() != null
                     && !currentHospitalId.equals(
                     request.getHospitalId())) {
@@ -522,10 +498,6 @@ public class DoctorServiceImpl implements DoctorService {
                         "Doctor account is not configured");
             }
 
-            /*
-             * Doctor cannot change account ownership.
-             * ADMIN may assign another unused DOCTOR account.
-             */
             if (request.getAccountId() != null
                     && !request.getAccountId()
                     .equals(account.getId())) {
@@ -651,9 +623,6 @@ public class DoctorServiceImpl implements DoctorService {
             UUID currentHospitalId =
                     requireCurrentHospital();
 
-            /*
-             * Database-level tenant validation.
-             */
             DoctorEntity doctor =
                     doctorRepo.findByIdAndHospitalId(
                             id,
@@ -680,15 +649,6 @@ public class DoctorServiceImpl implements DoctorService {
         }
     }
 
-    /*
-     * Internal method.
-     *
-     * Existing internal services already perform their own
-     * hospital/relationship validation after resolving the entity.
-     * Therefore this method intentionally remains unscoped so
-     * existing Appointment/Prescription/MedicalRecord flows are
-     * not broken.
-     */
     @Override
     @Transactional(readOnly = true)
     public DoctorEntity findDoctorById(UUID doctorId) {

@@ -290,14 +290,6 @@ public class MedicalReportServiceImpl implements MedicalReportService {
         medicalReportRepo.delete(report);
     }
 
-    /**
-     * First use tenant-scoped lookup.
-     *
-     * If the report exists but belongs to another hospital,
-     * return 403 instead of leaking it as 404.
-     *
-     * If it does not exist at all, return 404.
-     */
     private MedicalReportEntity findTenantScopedReport(
             UUID id,
             UUID hospitalId) {

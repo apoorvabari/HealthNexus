@@ -66,9 +66,6 @@ public class MedicalRecordServiceImpl implements MedicalRecordService {
         UserEntity currentUser = requireCurrentUser();
         String role = getRole(currentUser);
 
-        /*
-         * DOCTOR can create records only for himself.
-         */
         if ("DOCTOR".equals(role)) {
 
             DoctorEntity currentDoctor =
@@ -164,13 +161,6 @@ public class MedicalRecordServiceImpl implements MedicalRecordService {
         return medicalRecordMapper.toResponse(record);
     }
 
-    /**
-     * Internal use by other services.
-     *
-     * IMPORTANT:
-     * This method is tenant-scoped so another hospital's
-     * medical record cannot be loaded by ID.
-     */
     @Override
     public MedicalRecordEntity findMedicalRecordEntityById(UUID id) {
 
@@ -196,9 +186,6 @@ public class MedicalRecordServiceImpl implements MedicalRecordService {
 
         String role = getRole(currentUser);
 
-        /*
-         * PATIENT -> own records only.
-         */
         if ("PATIENT".equals(role)) {
 
             if (patient.getAccount() == null ||
@@ -210,9 +197,6 @@ public class MedicalRecordServiceImpl implements MedicalRecordService {
             }
         }
 
-        /*
-         * DOCTOR -> only records belonging to the current doctor.
-         */
         List<MedicalRecordEntity> records =
                 medicalRecordRepo.findByPatientIdAndPatientHospitalId(
                         patientId,
@@ -238,13 +222,6 @@ public class MedicalRecordServiceImpl implements MedicalRecordService {
                     .collect(Collectors.toList());
         }
 
-        /*
-         * ADMIN / RECEPTIONIST:
-         * All records for patients in their hospital.
-         *
-         * Receptionist is not exposed by the current controller,
-         * but this keeps service-level tenant enforcement correct.
-         */
         return records.stream()
                 .map(medicalRecordMapper::toResponse)
                 .collect(Collectors.toList());
@@ -267,9 +244,6 @@ public class MedicalRecordServiceImpl implements MedicalRecordService {
 
         String role = getRole(currentUser);
 
-        /*
-         * DOCTOR -> own records only.
-         */
         if ("DOCTOR".equals(role)) {
 
             if (doctor.getAccount() == null ||
@@ -299,9 +273,6 @@ public class MedicalRecordServiceImpl implements MedicalRecordService {
 
         UUID hospitalId = requireCurrentHospital();
 
-        /*
-         * Appointment itself must belong to current hospital.
-         */
         AppointmentEntity appointment =
                 appointmentService.findAppointmentById(appointmentId);
 
@@ -324,9 +295,6 @@ public class MedicalRecordServiceImpl implements MedicalRecordService {
 
         MedicalRecordEntity record = records.get(0);
 
-        /*
-         * Protect against inconsistent DB relationships.
-         */
         if (record.getPatient() == null ||
                 record.getDoctor() == null) {
 
@@ -346,9 +314,6 @@ public class MedicalRecordServiceImpl implements MedicalRecordService {
             UUID hospitalId
     ) {
 
-        /*
-         * Patient is the primary tenant boundary.
-         */
         return medicalRecordRepo
                 .findByIdAndPatientHospitalId(id, hospitalId)
                 .orElseThrow(() ->

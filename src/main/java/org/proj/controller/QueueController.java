@@ -15,7 +15,6 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/queue")
-
 public class QueueController {
 
     @Autowired
@@ -68,5 +67,12 @@ public class QueueController {
     public ResponseEntity<QueueResponse> skipQueue(
             @PathVariable UUID id) {
         return ResponseEntity.ok(queueService.skipQueue(id));
+    }
+
+    @PutMapping("/recall/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEPTIONIST')")
+    public ResponseEntity<QueueResponse> recallSkippedPatient(
+            @PathVariable UUID id) {
+        return ResponseEntity.ok(queueService.recallSkippedPatient(id));
     }
 }

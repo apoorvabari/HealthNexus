@@ -108,7 +108,7 @@ public class ReceptionistServiceImpl implements ReceptionistService {
             return response;
 
         } catch (AccessDeniedException e) {
-            // Preserve 403 Forbidden.
+            
             throw e;
 
         } catch (IllegalArgumentException e) {
@@ -141,19 +141,6 @@ public class ReceptionistServiceImpl implements ReceptionistService {
 
             UserEntity currentUser = SecurityUtils.getCurrentUser();
 
-            /*
-             * Object-level authorization:
-             *
-             * ADMIN:
-             *   Can access any receptionist.
-             *
-             * RECEPTIONIST:
-             *   Can access only their own receptionist profile.
-             *
-             * DOCTOR:
-             *   Existing controller permission is preserved.
-             *   Therefore doctors can continue to view receptionist profiles.
-             */
             if (isReceptionist(currentUser)) {
 
                 verifyOwnReceptionistProfile(
@@ -171,8 +158,7 @@ public class ReceptionistServiceImpl implements ReceptionistService {
             return receptionistMapper.toResponse(receptionist);
 
         } catch (AccessDeniedException e) {
-            // IMPORTANT:
-            // Do not convert 403 into 500.
+            
             throw e;
 
         } catch (IllegalArgumentException e) {
@@ -195,14 +181,6 @@ public class ReceptionistServiceImpl implements ReceptionistService {
 
             List<ReceptionistEntity> receptionists;
 
-            /*
-             * RECEPTIONIST:
-             *   Never expose the complete receptionist collection.
-             *   Return only the authenticated receptionist's profile.
-             *
-             * ADMIN / DOCTOR:
-             *   Preserve existing functionality and return all.
-             */
             if (isReceptionist(currentUser)) {
 
                 receptionists = receptionistRepo
@@ -252,15 +230,6 @@ public class ReceptionistServiceImpl implements ReceptionistService {
 
             UserEntity currentUser = SecurityUtils.getCurrentUser();
 
-            /*
-             * Object-level authorization:
-             *
-             * RECEPTIONIST:
-             *   Can update ONLY their own receptionist profile.
-             *
-             * ADMIN:
-             *   Can update any receptionist.
-             */
             if (isReceptionist(currentUser)) {
 
                 verifyOwnReceptionistProfile(
@@ -300,9 +269,6 @@ public class ReceptionistServiceImpl implements ReceptionistService {
                 }
             }
 
-            /*
-             * Existing account update behavior is preserved for ADMIN.
-             */
             UserEntity account = receptionist.getAccount();
 
             if (request.getAccountId() != null
@@ -342,7 +308,6 @@ public class ReceptionistServiceImpl implements ReceptionistService {
                         "A receptionist profile cannot be moved to another hospital");
             }
 
-            // Never switch the persisted hospital based on client input.
             hospital = hospitalService.findHospitalById(currentHospitalId);
 
             DepartmentEntity department =
@@ -401,7 +366,7 @@ public class ReceptionistServiceImpl implements ReceptionistService {
             return response;
 
         } catch (AccessDeniedException e) {
-            // Preserve 403 Forbidden.
+            
             throw e;
 
         } catch (IllegalArgumentException e) {
@@ -491,12 +456,6 @@ public class ReceptionistServiceImpl implements ReceptionistService {
             UserEntity currentUser =
                     SecurityUtils.getCurrentUser();
 
-            /*
-             * RECEPTIONIST:
-             *
-             * The accountId in the URL must be the same account
-             * represented by the authenticated JWT.
-             */
             if (isReceptionist(currentUser)
                     && !accountId.equals(currentUser.getId())) {
 
@@ -507,7 +466,7 @@ public class ReceptionistServiceImpl implements ReceptionistService {
             return receptionistMapper.toResponse(receptionist);
 
         } catch (AccessDeniedException e) {
-            // Preserve 403 Forbidden.
+            
             throw e;
 
         } catch (IllegalArgumentException e) {
@@ -531,15 +490,6 @@ public class ReceptionistServiceImpl implements ReceptionistService {
         return hospitalId;
     }
 
-    /*
-     * ============================================================
-     * SECURITY HELPER METHODS
-     * ============================================================
-     */
-
-    /**
-     * Determines whether the authenticated user is a receptionist.
-     */
     private boolean isReceptionist(UserEntity currentUser) {
 
         return currentUser != null
@@ -548,19 +498,6 @@ public class ReceptionistServiceImpl implements ReceptionistService {
                         currentUser.getRole().getRoleName());
     }
 
-    /**
-     * Performs object-level authorization for a receptionist profile.
-     *
-     * The authorization is based on the actual entity relationship:
-     *
-     * ReceptionistEntity.account.id
-     *
-     * versus
-     *
-     * authenticated UserEntity.id
-     *
-     * No username manipulation is used.
-     */
     private void verifyOwnReceptionistProfile(
             ReceptionistEntity receptionist,
             UserEntity currentUser,
@@ -640,7 +577,6 @@ public class ReceptionistServiceImpl implements ReceptionistService {
 
         UUID currentHospitalId = requireCurrentHospital();
 
-        // 1. Create PATIENT user account
         org.proj.dto.RegisterRequest registerRequest = org.proj.dto.RegisterRequest.builder()
                 .firstName(request.getFirstName())
                 .middleName(request.getMiddleName())
@@ -655,7 +591,6 @@ public class ReceptionistServiceImpl implements ReceptionistService {
             throw new IllegalStateException("Failed to create user account for walk-in patient");
         }
 
-        // 2. Create Patient profile in the same transaction
         org.proj.dto.PatientRequest patientRequest = org.proj.dto.PatientRequest.builder()
                 .accountId(userAccount.getId())
                 .hospitalId(currentHospitalId)

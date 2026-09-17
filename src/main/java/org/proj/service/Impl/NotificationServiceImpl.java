@@ -44,7 +44,6 @@ public class NotificationServiceImpl implements NotificationService {
                 .build();
         notificationRepo.save(notification);
 
-        // Broadcast real-time via WebSocket
         messagingTemplate.convertAndSend("/topic/notifications/" + recipient.getId(), toResponse(notification));
     }
 
@@ -108,8 +107,6 @@ public class NotificationServiceImpl implements NotificationService {
         UserEntity currentUser = requireCurrentUser();
         notificationRepo.markAllAsReadByRecipientId(currentUser.getId());
     }
-
-    // ── helpers ──────────────────────────────────────────────────────────────
 
     private UserEntity requireCurrentUser() {
         UserEntity currentUser = SecurityUtils.getCurrentUser();

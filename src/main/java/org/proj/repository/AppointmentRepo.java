@@ -30,9 +30,6 @@ public interface AppointmentRepo extends JpaRepository<AppointmentEntity, UUID> 
             UUID id
     );
 
-    /*
-     * Hospital-scoped availability checks
-     */
     boolean existsByDoctorIdAndAppointmentDateAndAppointmentTimeAndHospitalId(
             UUID doctorId,
             LocalDate date,
@@ -73,9 +70,6 @@ public interface AppointmentRepo extends JpaRepository<AppointmentEntity, UUID> 
             LocalDate date
     );
 
-    /*
-     * Hospital-scoped doctor/date lookup
-     */
     List<AppointmentEntity> findByDoctorIdAndAppointmentDateAndHospitalId(
             UUID doctorId,
             LocalDate date,

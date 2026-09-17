@@ -115,10 +115,6 @@ public class AppointmentEntity {
     @Column(length = 500)
     private String remarks;
 
-    /**
-     * Timestamp of the appointment reminder notification.
-     * Null means the reminder has not been sent yet.
-     */
     @Column
     private LocalDateTime appointmentReminderSentAt;
 

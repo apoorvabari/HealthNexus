@@ -208,10 +208,6 @@ public class PatientConsentServiceImpl implements PatientConsentService {
         }
     }
 
-    // ---------------------------------------------------------
-    // Security helpers
-    // ---------------------------------------------------------
-
     private UserEntity requireCurrentUser() {
 
         UserEntity currentUser =
@@ -254,10 +250,6 @@ public class PatientConsentServiceImpl implements PatientConsentService {
                 );
     }
 
-    // ---------------------------------------------------------
-    // Audit logging
-    // ---------------------------------------------------------
-
     private void logConsentAction(
             UUID entityId,
             String action,
@@ -286,10 +278,6 @@ public class PatientConsentServiceImpl implements PatientConsentService {
 
         auditLogService.save(log);
     }
-
-    // ---------------------------------------------------------
-    // Response mapping
-    // ---------------------------------------------------------
 
     private ConsentResponse toResponse(
             PatientConsentEntity entity) {

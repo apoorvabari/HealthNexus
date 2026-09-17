@@ -20,14 +20,6 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
 
-/**
- * Creates idempotent in-app reminders for upcoming appointments and patients
- * who are approaching the front of today's queue.
- *
- * This is a system/background operation, so it intentionally does not depend
- * on TenantContextService. Each repository query and entity relationship is
- * evaluated explicitly, hospital by hospital through the stored entity graph.
- */
 @Service
 @RequiredArgsConstructor
 public class ReminderSchedulerServiceImpl implements ReminderSchedulerService {
@@ -95,10 +87,6 @@ public class ReminderSchedulerServiceImpl implements ReminderSchedulerService {
                     appointment.getAppointmentTime()
             );
 
-            /*
-             * Reminder is sent only inside the configured window and never for a
-             * past appointment. The sent timestamp makes the operation idempotent.
-             */
             if (appointmentDateTime.isBefore(now)
                     || appointmentDateTime.isAfter(reminderUpperBound)) {
                 continue;

@@ -56,10 +56,6 @@ public class AppointmentServiceImpl implements AppointmentService {
         try {
             UserEntity currentUser = SecurityUtils.getCurrentUser();
 
-            /*
-             * NEVER trust hospitalId supplied by frontend.
-             * Always derive hospital from authenticated user's tenant.
-             */
             UUID currentHospitalId = tenantContextService.getCurrentUserHospitalId();
 
             if (currentHospitalId == null) {
@@ -80,9 +76,6 @@ public class AppointmentServiceImpl implements AppointmentService {
             PatientEntity patient =
                     patientService.findPatientById(request.getPatientId());
 
-            /*
-             * Patient can only create appointment for themselves.
-             */
             if (SecurityUtils.isPatient()) {
 
                 if (patient.getAccount() == null
@@ -95,9 +88,6 @@ public class AppointmentServiceImpl implements AppointmentService {
                 }
             }
 
-            /*
-             * Doctor can only create appointment for himself.
-             */
             if ("DOCTOR".equalsIgnoreCase(
                     SecurityUtils.getCurrentUser().getRole().getRoleName())) {
 
@@ -134,9 +124,6 @@ public class AppointmentServiceImpl implements AppointmentService {
                 }
             }
 
-            /*
-             * Department must belong to current hospital.
-             */
             if (department.getHospital() == null
                     || !currentHospitalId.equals(
                     department.getHospital().getId())) {
@@ -146,9 +133,6 @@ public class AppointmentServiceImpl implements AppointmentService {
                 );
             }
 
-            /*
-             * Doctor must belong to current hospital.
-             */
             if (doctor.getHospital() == null
                     || !currentHospitalId.equals(
                     doctor.getHospital().getId())) {
@@ -158,9 +142,6 @@ public class AppointmentServiceImpl implements AppointmentService {
                 );
             }
 
-            /*
-             * Doctor must belong to selected department.
-             */
             if (doctor.getDepartment() == null
                     || !doctor.getDepartment().getId()
                     .equals(department.getId())) {
@@ -170,9 +151,6 @@ public class AppointmentServiceImpl implements AppointmentService {
                 );
             }
 
-            /*
-             * Patient must belong to current hospital.
-             */
             if (patient.getHospital() == null
                     || !currentHospitalId.equals(
                     patient.getHospital().getId())) {
@@ -182,9 +160,6 @@ public class AppointmentServiceImpl implements AppointmentService {
                 );
             }
 
-            /*
-             * Hospital-scoped doctor availability.
-             */
             if (appointmentRepo
                     .existsByDoctorIdAndAppointmentDateAndAppointmentTimeAndHospitalId(
                             doctor.getId(),
@@ -281,9 +256,6 @@ public class AppointmentServiceImpl implements AppointmentService {
 
             AppointmentEntity appointment;
 
-            /*
-             * PATIENT → own appointment only.
-             */
             if (SecurityUtils.isPatient()) {
 
                 PatientEntity patient =
@@ -318,9 +290,6 @@ public class AppointmentServiceImpl implements AppointmentService {
 
             } else {
 
-                /*
-                 * STAFF → same hospital only.
-                 */
                 UUID hospitalId =
                         requireCurrentHospital();
 
@@ -335,9 +304,6 @@ public class AppointmentServiceImpl implements AppointmentService {
                                 });
             }
 
-            /*
-             * DOCTOR → own appointments only.
-             */
             if ("DOCTOR".equalsIgnoreCase(
                     SecurityUtils.getCurrentUser().getRole().getRoleName())) {
 
@@ -430,11 +396,6 @@ public class AppointmentServiceImpl implements AppointmentService {
             UserEntity currentUser =
                     SecurityUtils.getCurrentUser();
 
-            /*
-             * CRITICAL:
-             * Never load appointment globally.
-             * Appointment must already belong to current tenant.
-             */
             AppointmentEntity appointment =
                     appointmentRepo
                             .findByIdAndHospitalId(
@@ -448,9 +409,6 @@ public class AppointmentServiceImpl implements AppointmentService {
                                     return new IllegalArgumentException("Appointment not found");
                                 });
 
-            /*
-             * PATIENT ownership.
-             */
             if (SecurityUtils.isPatient()) {
 
                 if (appointment.getPatient() == null
@@ -465,9 +423,6 @@ public class AppointmentServiceImpl implements AppointmentService {
                     );
                 }
 
-                /*
-                 * Patient cannot change ownership/tenant relations.
-                 */
                 if (request.getHospitalId() != null
                         && !request.getHospitalId()
                         .equals(currentHospitalId)) {
@@ -520,9 +475,6 @@ public class AppointmentServiceImpl implements AppointmentService {
                 }
             }
 
-            /*
-             * DOCTOR ownership.
-             */
             if ("DOCTOR".equalsIgnoreCase(
                     SecurityUtils.getCurrentUser().getRole().getRoleName())) {
 
@@ -547,9 +499,6 @@ public class AppointmentServiceImpl implements AppointmentService {
                 }
             }
 
-            /*
-             * RECEPTIONIST tenant validation.
-             */
             if ("RECEPTIONIST".equalsIgnoreCase(
                     SecurityUtils.getCurrentUser().getRole().getRoleName())) {
 
@@ -573,9 +522,6 @@ public class AppointmentServiceImpl implements AppointmentService {
                 }
             }
 
-            /*
-             * Hospital can NEVER be changed.
-             */
             if (request.getHospitalId() != null
                     && !request.getHospitalId()
                     .equals(currentHospitalId)) {
@@ -588,9 +534,6 @@ public class AppointmentServiceImpl implements AppointmentService {
             HospitalEntity hospital =
                     appointment.getHospital();
 
-            /*
-             * Resolve department.
-             */
             DepartmentEntity department =
                     appointment.getDepartment();
 
@@ -613,9 +556,6 @@ public class AppointmentServiceImpl implements AppointmentService {
                 }
             }
 
-            /*
-             * Resolve doctor.
-             */
             DoctorEntity doctor =
                     appointment.getDoctor();
 
@@ -638,9 +578,6 @@ public class AppointmentServiceImpl implements AppointmentService {
                 }
             }
 
-            /*
-             * Resolve patient.
-             */
             PatientEntity patient =
                     appointment.getPatient();
 
@@ -663,9 +600,6 @@ public class AppointmentServiceImpl implements AppointmentService {
                 }
             }
 
-            /*
-             * Doctor → department consistency.
-             */
             if (doctor.getDepartment() == null
                     || !doctor.getDepartment()
                     .getId()
@@ -676,9 +610,6 @@ public class AppointmentServiceImpl implements AppointmentService {
                 );
             }
 
-            /*
-             * Doctor → hospital consistency.
-             */
             if (doctor.getHospital() == null
                     || !doctor.getHospital()
                     .getId()
@@ -689,9 +620,6 @@ public class AppointmentServiceImpl implements AppointmentService {
                 );
             }
 
-            /*
-             * Patient → hospital consistency.
-             */
             if (patient.getHospital() == null
                     || !patient.getHospital()
                     .getId()
@@ -702,9 +630,6 @@ public class AppointmentServiceImpl implements AppointmentService {
                 );
             }
 
-            /*
-             * Resolve receptionist.
-             */
             ReceptionistEntity receptionist =
                     appointment.getBookedByReceptionist();
 
@@ -738,9 +663,6 @@ public class AppointmentServiceImpl implements AppointmentService {
                             ? request.getAppointmentTime()
                             : appointment.getAppointmentTime();
 
-            /*
-             * Hospital-scoped availability.
-             */
             if (appointmentRepo
                     .existsByDoctorIdAndAppointmentDateAndAppointmentTimeAndIdNotAndHospitalId(
                             doctor.getId(),
@@ -764,9 +686,6 @@ public class AppointmentServiceImpl implements AppointmentService {
                     receptionist
             );
 
-            /*
-             * Force original tenant.
-             */
             appointment.setHospital(hospital);
 
             AppointmentEntity updatedAppointment =
@@ -957,9 +876,6 @@ public class AppointmentServiceImpl implements AppointmentService {
             UserEntity currentUser =
                     SecurityUtils.getCurrentUser();
 
-            /*
-             * DB-level tenant filtering.
-             */
             AppointmentEntity appointment =
                     appointmentRepo
                             .findByIdAndHospitalId(
@@ -973,9 +889,6 @@ public class AppointmentServiceImpl implements AppointmentService {
                                     return new IllegalArgumentException("Appointment not found");
                                 });
 
-            /*
-             * Patient → own appointment only.
-             */
             if (SecurityUtils.isPatient()) {
 
                 if (appointment.getPatient() == null
@@ -991,9 +904,6 @@ public class AppointmentServiceImpl implements AppointmentService {
                 }
             }
 
-            /*
-             * Doctor → own appointment only.
-             */
             if ("DOCTOR".equalsIgnoreCase(
                     SecurityUtils.getCurrentUser().getRole().getRoleName())) {
 
@@ -1018,9 +928,6 @@ public class AppointmentServiceImpl implements AppointmentService {
                 }
             }
 
-            /*
-             * Receptionist tenant validation.
-             */
             if ("RECEPTIONIST".equalsIgnoreCase(
                     SecurityUtils.getCurrentUser().getRole().getRoleName())) {
 
@@ -1087,9 +994,6 @@ public class AppointmentServiceImpl implements AppointmentService {
             UserEntity currentUser =
                     SecurityUtils.getCurrentUser();
 
-            /*
-             * Doctor → own appointments + own hospital.
-             */
             if ("DOCTOR".equalsIgnoreCase(
                     SecurityUtils.getCurrentUser().getRole().getRoleName())) {
 
@@ -1114,9 +1018,6 @@ public class AppointmentServiceImpl implements AppointmentService {
                         .toList();
             }
 
-            /*
-             * Patient → own appointments + own hospital.
-             */
             if (SecurityUtils.isPatient()) {
 
                 PatientEntity patient =
@@ -1138,9 +1039,6 @@ public class AppointmentServiceImpl implements AppointmentService {
                         .toList();
             }
 
-            /*
-             * Receptionist/Admin → hospital scoped.
-             */
             return appointmentRepo
                     .findByAppointmentDateAndHospitalId(
                             LocalDate.now(),
@@ -1185,9 +1083,6 @@ public class AppointmentServiceImpl implements AppointmentService {
                 throw new AccessDeniedException("Doctor does not belong to your hospital");
             }
 
-            /*
-             * Doctor can only request own appointments.
-             */
             if ("DOCTOR".equalsIgnoreCase(
                     SecurityUtils.getCurrentUser().getRole().getRoleName())) {
 
@@ -1256,9 +1151,6 @@ public class AppointmentServiceImpl implements AppointmentService {
                 throw new AccessDeniedException("Patient does not belong to your hospital");
             }
 
-            /*
-             * Patient → own appointments only.
-             */
             if (SecurityUtils.isPatient()) {
 
                 PatientEntity patient =
@@ -1277,9 +1169,6 @@ public class AppointmentServiceImpl implements AppointmentService {
                 }
             }
 
-            /*
-             * DB-level hospital filtering.
-             */
             return appointmentRepo
                     .findByPatientIdAndHospitalId(
                             patientId,
@@ -1320,9 +1209,6 @@ public class AppointmentServiceImpl implements AppointmentService {
             UUID hospitalId =
                     requireCurrentHospital();
 
-            /*
-             * Verify doctor belongs to current hospital.
-             */
             DoctorEntity doctor =
                     doctorService.findDoctorById(doctorId);
 
@@ -1335,9 +1221,6 @@ public class AppointmentServiceImpl implements AppointmentService {
                 );
             }
 
-            /*
-             * Generate slots from 09:00 to 17:00.
-             */
             List<LocalTime> allSlots =
                     new ArrayList<>();
 
@@ -1355,10 +1238,6 @@ public class AppointmentServiceImpl implements AppointmentService {
                         startTime.plusMinutes(30);
             }
 
-            /*
-             * IMPORTANT:
-             * Only appointments from the current hospital.
-             */
             List<AppointmentEntity> existingAppointments =
                     appointmentRepo
                             .findByDoctorIdAndAppointmentDateAndHospitalId(

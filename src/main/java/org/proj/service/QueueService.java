@@ -21,4 +21,6 @@ public interface QueueService {
     QueueResponse completeConsultation(UUID queueId);
 
     QueueResponse skipQueue(UUID queueId);
+
+    QueueResponse recallSkippedPatient(UUID queueId);
 }

@@ -25,16 +25,10 @@ public interface DepartmentRepo extends JpaRepository<DepartmentEntity, UUID> {
             UUID hospitalId,
             UUID id);
 
-    /**
-     * Finds a department only when it belongs to the requested hospital.
-     */
     Optional<DepartmentEntity> findByIdAndHospitalId(
             UUID id,
             UUID hospitalId);
 
-    /**
-     * Hospital-scoped department search.
-     */
     @Query("""
             SELECT d
             FROM DepartmentEntity d

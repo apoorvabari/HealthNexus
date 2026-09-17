@@ -235,7 +235,6 @@ public class UserServiceImpl implements UserService, UserDetailsService {
         throw new UnsupportedOperationException("Not implemented yet");
     }
 
-
     @Override
     public void verifyEmail(String token) {
         throw new UnsupportedOperationException("Not implemented yet");

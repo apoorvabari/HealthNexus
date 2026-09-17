@@ -33,8 +33,6 @@ public class SecurityConfig {
     @Autowired
     private com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
-
-
     @Bean
     @Order(1)
     public SecurityFilterChain publicSecurityFilterChain(HttpSecurity http) throws Exception {
@@ -81,7 +79,6 @@ public class SecurityConfig {
         return http.build();
     }
 
-   
     @org.springframework.beans.factory.annotation.Value("${app.cors.allowed-origins:http://localhost:8081,http://localhost:19006,http://localhost:8080,http://localhost:3000}")
     private String allowedOrigins;
 

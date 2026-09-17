@@ -52,7 +52,7 @@ public class MedicalReportEntity {
     @Lob
     @JdbcTypeCode(SqlTypes.LONGVARCHAR)
     @Column(nullable = false)
-    private String fileData; // Base64 encoded file data
+    private String fileData; 
 
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;

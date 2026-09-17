@@ -37,12 +37,6 @@ public class AdminEntity {
     @JdbcTypeCode(SqlTypes.VARCHAR)
     private UUID id;
 
-    /*
-     * One ADMIN account can be associated with
-     * multiple hospitals.
-     *
-     * Therefore this must NOT be OneToOne.
-     */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(
             name = "account_id",
@@ -52,10 +46,6 @@ public class AdminEntity {
     @EqualsAndHashCode.Exclude
     private UserEntity account;
 
-    /*
-     * Each AdminEntity row represents one
-     * ADMIN -> HOSPITAL assignment.
-     */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(
             name = "hospital_id",

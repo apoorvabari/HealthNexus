@@ -42,10 +42,6 @@ public class ConsultationServiceImpl implements ConsultationService {
 
         UUID hospitalId = requireCurrentHospital();
 
-        /*
-         * AppointmentService.findAppointmentById() is already
-         * tenant-scoped in the current architecture.
-         */
         AppointmentEntity appointment =
                 appointmentService.findAppointmentById(
                         request.getAppointmentId()
@@ -68,10 +64,6 @@ public class ConsultationServiceImpl implements ConsultationService {
             );
         }
 
-        /*
-         * Only the assigned doctor or an admin of the same hospital
-         * can start the consultation.
-         */
         validateDoctorAccessForAppointment(
                 appointment,
                 hospitalId

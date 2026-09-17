@@ -22,40 +22,15 @@ import java.util.concurrent.ConcurrentHashMap;
 @Service
 public class DoctorPresenceService {
 
-    /*
-     * Hospital ID
-     *      ↓
-     * Set of doctor IDs who are currently online
-     */
     private final Map<UUID, Set<UUID>> hospitalToOnlineDoctors =
             new ConcurrentHashMap<>();
 
-    /*
-     * WebSocket session ID
-     *      ↓
-     * Doctor ID
-     */
     private final Map<String, UUID> sessionToDoctorMap =
             new ConcurrentHashMap<>();
 
-    /*
-     * WebSocket session ID
-     *      ↓
-     * Hospital ID
-     */
     private final Map<String, UUID> sessionToHospitalMap =
             new ConcurrentHashMap<>();
 
-    /*
-     * Doctor ID
-     *      ↓
-     * All active WebSocket sessions for that doctor
-     *
-     * This is required because one doctor can have:
-     * - browser session
-     * - mobile session
-     * - another browser tab
-     */
     private final Map<UUID, Set<String>> doctorToSessions =
             new ConcurrentHashMap<>();
 
@@ -119,37 +94,19 @@ public class DoctorPresenceService {
         UUID doctorId = doctor.getId();
         UUID hospitalId = doctor.getHospital().getId();
 
-        /*
-         * Get the existing sessions for this doctor.
-         */
         Set<String> sessions =
                 doctorToSessions.computeIfAbsent(
                         doctorId,
                         key -> ConcurrentHashMap.newKeySet()
                 );
 
-        /*
-         * If there are no sessions before this connection,
-         * this is the transition:
-         *
-         * OFFLINE → ONLINE
-         */
         boolean isFirstSession = sessions.isEmpty();
 
         sessions.add(sessionId);
 
-        /*
-         * Store the relationship between:
-         *
-         * session → doctor
-         * session → hospital
-         */
         sessionToDoctorMap.put(sessionId, doctorId);
         sessionToHospitalMap.put(sessionId, hospitalId);
 
-        /*
-         * Broadcast ONLINE only once.
-         */
         if (isFirstSession) {
 
             hospitalToOnlineDoctors
@@ -183,10 +140,6 @@ public class DoctorPresenceService {
         UUID hospitalId =
                 sessionToHospitalMap.remove(sessionId);
 
-        /*
-         * We only process sessions that were registered
-         * as doctor sessions.
-         */
         if (doctorId == null || hospitalId == null) {
             return;
         }
@@ -200,27 +153,10 @@ public class DoctorPresenceService {
 
         sessions.remove(sessionId);
 
-        /*
-         * Doctor still has another active session.
-         *
-         * Example:
-         *
-         * Browser 1 → disconnected
-         * Browser 2 → still connected
-         *
-         * Therefore doctor remains ONLINE.
-         */
         if (!sessions.isEmpty()) {
             return;
         }
 
-        /*
-         * No sessions remain.
-         *
-         * Therefore:
-         *
-         * ONLINE → OFFLINE
-         */
         doctorToSessions.remove(
                 doctorId,
                 sessions
@@ -233,9 +169,6 @@ public class DoctorPresenceService {
 
             onlineDoctors.remove(doctorId);
 
-            /*
-             * Remove empty hospital entries.
-             */
             if (onlineDoctors.isEmpty()) {
                 hospitalToOnlineDoctors.remove(
                         hospitalId,
@@ -284,10 +217,6 @@ public class DoctorPresenceService {
             return Collections.emptySet();
         }
 
-        /*
-         * Return a snapshot rather than exposing the
-         * internal mutable ConcurrentHashMap set.
-         */
         return Set.copyOf(onlineDoctors);
     }
 }
