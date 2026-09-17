@@ -50,10 +50,6 @@ public class DepartmentServiceImpl implements DepartmentService {
             throw new IllegalArgumentException("Hospital ID is required");
         }
 
-        /*
-         * Never trust the hospital ID supplied by the client.
-         * ADMIN can create departments only inside their own hospital.
-         */
         if (!currentHospitalId.equals(request.getHospitalId())) {
             throw new AccessDeniedException(
                     "You cannot create a department for another hospital");
@@ -179,9 +175,6 @@ public class DepartmentServiceImpl implements DepartmentService {
                     "Department is not associated with a hospital");
         }
 
-        /*
-         * Prevent tenant switching.
-         */
         if (request.getHospitalId() != null
                 && !currentHospitalId.equals(request.getHospitalId())) {
 
@@ -203,9 +196,6 @@ public class DepartmentServiceImpl implements DepartmentService {
                     "Department code already exists in this hospital");
         }
 
-        /*
-         * Keep the department attached to the existing tenant.
-         */
         departmentMapper.updateEntity(
                 department,
                 request,
@@ -423,12 +413,6 @@ public class DepartmentServiceImpl implements DepartmentService {
                 .build();
     }
 
-    /**
-     * Used internally by Doctor, Appointment and Receptionist services.
-     *
-     * The returned department is always restricted to the
-     * authenticated user's hospital.
-     */
     @Override
     @Transactional(readOnly = true)
     public DepartmentEntity findDepartmentById(UUID departmentId) {

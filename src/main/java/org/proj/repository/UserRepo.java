@@ -37,10 +37,6 @@ public interface UserRepo extends JpaRepository<UserEntity, UUID> {
             UUID id
     );
 
-    // =========================================================
-    // GLOBAL SEARCH
-    // =========================================================
-
     @Query("""
         SELECT DISTINCT u
         FROM UserEntity u
@@ -60,11 +56,6 @@ public interface UserRepo extends JpaRepository<UserEntity, UUID> {
             @Param("search") String search,
             Pageable pageable
     );
-
-    // =========================================================
-    // HOSPITAL-SCOPED USER SEARCH
-    // ADMIN USERS EXCLUDED
-    // =========================================================
 
     @Query("""
         SELECT DISTINCT u
@@ -112,11 +103,6 @@ public interface UserRepo extends JpaRepository<UserEntity, UUID> {
             @Param("search") String search,
             Pageable pageable
     );
-
-    // =========================================================
-    // HOSPITAL-SCOPED FILTER
-    // ADMIN USERS EXCLUDED
-    // =========================================================
 
     @Query("""
         SELECT DISTINCT u
@@ -264,10 +250,6 @@ public interface UserRepo extends JpaRepository<UserEntity, UUID> {
     );
 
     Optional<UserEntity> findByEmail(String email);
-
-    // =========================================================
-    // COUNTS
-    // =========================================================
 
     long countByIsActiveTrue();
 

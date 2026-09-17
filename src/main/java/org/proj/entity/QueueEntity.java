@@ -74,10 +74,6 @@ public class QueueEntity {
     @Column
     private LocalDateTime consultationEnd;
 
-    /**
-     * Timestamp of the queue reminder notification.
-     * Null means the reminder has not been sent yet.
-     */
     @Column
     private LocalDateTime queueReminderSentAt;
 

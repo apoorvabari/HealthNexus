@@ -67,11 +67,6 @@ public class UserEntity implements UserDetails {
     @Column
     private LocalDateTime lastLogin;
 
-    /**
-     * Version of the currently valid JWT generation.
-     * Incrementing this value invalidates all previously issued access tokens
-     * for this user.
-     */
     @Builder.Default
     @Column(nullable = false)
     private Long tokenVersion = 0L;

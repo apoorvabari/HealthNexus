@@ -40,13 +40,7 @@ public class HospitalServiceImpl implements HospitalService {
     public HospitalResponse createHospital(HospitalRequest request) {
 
         try {
-            /*
-             * Hospital creation is ADMIN-only.
-             *
-             * The controller already enforces this, but the
-             * service also verifies it so the business layer
-             * cannot be bypassed.
-             */
+            
             UserEntity currentUser =
                     SecurityUtils.getCurrentUser();
 
@@ -98,14 +92,6 @@ public class HospitalServiceImpl implements HospitalService {
             HospitalEntity savedHospital =
                     hospitalRepo.save(hospital);
 
-            /*
-             * IMPORTANT:
-             *
-             * Every newly created hospital is automatically
-             * assigned to the ADMIN who created it.
-             *
-             * One ADMIN can therefore have many AdminEntity rows.
-             */
             AdminEntity adminAssignment =
                     AdminEntity.builder()
                             .account(currentUser)
@@ -161,15 +147,6 @@ public class HospitalServiceImpl implements HospitalService {
                 );
             }
 
-            /*
-             * Server-side ownership/tenant check.
-             *
-             * ADMIN:
-             *   requested hospital must belong to that admin.
-             *
-             * DOCTOR / RECEPTIONIST / PATIENT:
-             *   requested hospital must be their own hospital.
-             */
             if (!tenantContextService
                     .hasCurrentUserHospitalAccess(id)) {
 
@@ -229,15 +206,6 @@ public class HospitalServiceImpl implements HospitalService {
 
             Page<HospitalEntity> hospPage;
 
-            /*
-             * ADMIN:
-             *
-             * Return ALL hospitals assigned to this admin.
-             *
-             * No X-Hospital-Id is required for the list because
-             * the list itself is used to select the active
-             * hospital.
-             */
             if ("ADMIN".equals(roleName)) {
 
                 hospPage =
@@ -249,10 +217,6 @@ public class HospitalServiceImpl implements HospitalService {
 
             } else {
 
-                /*
-                 * Non-admin users remain restricted to their
-                 * single hospital.
-                 */
                 UUID currentHospitalId =
                         requireCurrentHospitalId();
 
@@ -306,10 +270,6 @@ public class HospitalServiceImpl implements HospitalService {
                 );
             }
 
-            /*
-             * Verify that the authenticated user has access
-             * to THIS exact hospital.
-             */
             if (!tenantContextService
                     .hasCurrentUserHospitalAccess(id)) {
 
@@ -403,9 +363,6 @@ public class HospitalServiceImpl implements HospitalService {
                 );
             }
 
-            /*
-             * Exact tenant ownership check.
-             */
             if (!tenantContextService
                     .hasCurrentUserHospitalAccess(id)) {
 
@@ -511,7 +468,7 @@ public class HospitalServiceImpl implements HospitalService {
             }
 
         } catch (NumberFormatException e) {
-            // Fall through to count-based generation.
+            
         }
 
         long count =

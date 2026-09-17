@@ -21,6 +21,6 @@ public class MedicalReportResponse {
     private String doctorName;
     private String reportName;
     private String reportType;
-    private String fileData; // Included for download
+    private String fileData; 
     private LocalDateTime createdAt;
 }

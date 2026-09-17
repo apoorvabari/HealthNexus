@@ -22,8 +22,6 @@ public class PatientRequest {
     @NotNull(message = "Account ID is required")
     private UUID accountId;
 
-    // For ADMIN/RECEPTIONIST, hospital is derived from tenant context.
-    // PATIENT self-registration may supply a hospital.
     private UUID hospitalId;
 
     private String patientCode;

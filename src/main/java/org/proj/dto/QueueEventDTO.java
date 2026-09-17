@@ -25,7 +25,9 @@ public class QueueEventDTO {
     }
 
     private QueueEventType eventType;
+
     private QueueResponse queue;
+
     private UUID hospitalId;
     private UUID doctorId;
     private LocalDateTime timestamp;

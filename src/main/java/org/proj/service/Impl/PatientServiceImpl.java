@@ -48,9 +48,6 @@ public class PatientServiceImpl implements PatientService {
             String role =
                     getRole(currentUser);
 
-            /*
-             * Patient can create only their own profile.
-             */
             if ("PATIENT".equals(role)) {
                 request.setAccountId(
                         currentUser.getId());
@@ -93,11 +90,6 @@ public class PatientServiceImpl implements PatientService {
                 UUID staffHospital =
                         requireCurrentHospital();
 
-                /*
-                 * Never trust client hospitalId.
-                 * Preserve existing behavior by overriding
-                 * the supplied value with authenticated tenant.
-                 */
                 targetHospitalId =
                         staffHospital;
 
@@ -106,10 +98,6 @@ public class PatientServiceImpl implements PatientService {
 
             } else if ("PATIENT".equals(role)) {
 
-                /*
-                 * Initial patient registration may select
-                 * the hospital.
-                 */
                 if (targetHospitalId == null) {
 
                     throw new IllegalArgumentException(
@@ -136,9 +124,6 @@ public class PatientServiceImpl implements PatientService {
                         "Hospital not found");
             }
 
-            /*
-             * Generate patient code if not supplied.
-             */
             if (request.getPatientCode() == null
                     || request.getPatientCode()
                     .trim()
@@ -225,9 +210,6 @@ public class PatientServiceImpl implements PatientService {
             UUID currentHospitalId =
                     requireCurrentHospital();
 
-            /*
-             * Database-level tenant filtering.
-             */
             PatientEntity patient =
                     patientRepo.findByIdAndHospitalId(
                             id,
@@ -236,9 +218,6 @@ public class PatientServiceImpl implements PatientService {
                                     new AccessDeniedException(
                                             "You are not authorized to view a patient from another hospital"));
 
-            /*
-             * Patient may access only their own profile.
-             */
             if ("PATIENT".equals(role)) {
 
                 if (patient.getAccount() == null
@@ -278,9 +257,6 @@ public class PatientServiceImpl implements PatientService {
             String role =
                     getRole(currentUser);
 
-            /*
-             * Patient sees only their own profile.
-             */
             if ("PATIENT".equals(role)) {
 
                 return patientRepo
@@ -342,9 +318,6 @@ public class PatientServiceImpl implements PatientService {
             UUID currentHospitalId =
                     requireCurrentHospital();
 
-            /*
-             * Database-level tenant filtering.
-             */
             PatientEntity patient =
                     patientRepo.findByIdAndHospitalId(
                             id,
@@ -353,9 +326,6 @@ public class PatientServiceImpl implements PatientService {
                                     new AccessDeniedException(
                                             "You are not authorized to update a patient from another hospital"));
 
-            /*
-             * PATIENT -> own profile only.
-             */
             if ("PATIENT".equals(role)) {
 
                 if (patient.getAccount() == null
@@ -382,11 +352,6 @@ public class PatientServiceImpl implements PatientService {
                         "Patient account is not configured");
             }
 
-            /*
-             * Account ownership cannot be changed by patient.
-             * ADMIN/RECEPTIONIST may assign another unused
-             * PATIENT account.
-             */
             if (request.getAccountId() != null
                     && !request.getAccountId()
                     .equals(account.getId())) {
@@ -435,9 +400,6 @@ public class PatientServiceImpl implements PatientService {
                         "Patient does not belong to the current hospital");
             }
 
-            /*
-             * Hospital ownership is immutable.
-             */
             if (request.getHospitalId() != null
                     && !currentHospitalId.equals(
                     request.getHospitalId())) {
@@ -446,9 +408,6 @@ public class PatientServiceImpl implements PatientService {
                         "Patient hospital cannot be changed");
             }
 
-            /*
-             * Patient cannot change protected fields.
-             */
             if ("PATIENT".equals(role)) {
 
                 if (request.getPatientCode() != null
@@ -528,9 +487,6 @@ public class PatientServiceImpl implements PatientService {
             UUID currentHospitalId =
                     requireCurrentHospital();
 
-            /*
-             * Database-level tenant filtering.
-             */
             PatientEntity patient =
                     patientRepo.findByIdAndHospitalId(
                             id,
@@ -557,16 +513,6 @@ public class PatientServiceImpl implements PatientService {
         }
     }
 
-    /*
-     * Internal entity lookup.
-     *
-     * Existing Appointment/Prescription/MedicalRecord/
-     * Billing/Receptionist services perform their own
-     * hospital and relationship validation after lookup.
-     *
-     * Therefore this method remains unchanged in semantics
-     * so existing workflows are not broken.
-     */
     @Override
     @Transactional(readOnly = true)
     public PatientEntity findPatientById(
@@ -626,9 +572,6 @@ public class PatientServiceImpl implements PatientService {
         UUID currentHospitalId =
                 requireCurrentHospital();
 
-        /*
-         * Patient can request only their own account.
-         */
         if ("PATIENT".equals(role)
                 && !currentUser.getId()
                 .equals(accountId)) {
@@ -637,9 +580,6 @@ public class PatientServiceImpl implements PatientService {
                     "You are not authorized to view this patient profile");
         }
 
-        /*
-         * Database-level tenant filtering.
-         */
         PatientEntity patient =
                 patientRepo.findByAccountIdAndHospitalId(
                         accountId,
@@ -648,9 +588,6 @@ public class PatientServiceImpl implements PatientService {
                                 new AccessDeniedException(
                                         "Patient does not belong to the current hospital"));
 
-        /*
-         * Final ownership check for PATIENT.
-         */
         if ("PATIENT".equals(role)
                 && (patient.getAccount() == null
                 || !currentUser.getId()

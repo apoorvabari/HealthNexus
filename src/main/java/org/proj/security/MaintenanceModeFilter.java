@@ -37,51 +37,31 @@ public class MaintenanceModeFilter extends OncePerRequestFilter {
             FilterChain filterChain)
             throws ServletException, IOException {
 
-        /*
-         * Always allow OPTIONS requests.
-         */
         if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
             filterChain.doFilter(request, response);
             return;
         }
 
-        /*
-         * Admin settings must remain accessible so an Admin
-         * can disable maintenance mode.
-         */
         if (isAdminEndpoint(request)) {
             filterChain.doFilter(request, response);
             return;
         }
 
-        /*
-         * Authentication endpoints must remain available.
-         */
         if (isAuthenticationEndpoint(request)) {
             filterChain.doFilter(request, response);
             return;
         }
 
-        /*
-         * Check current maintenance configuration.
-         */
         if (!isMaintenanceEnabled()) {
             filterChain.doFilter(request, response);
             return;
         }
 
-        /*
-         * During maintenance, Admin users can still access
-         * the application.
-         */
         if (isAdminUser()) {
             filterChain.doFilter(request, response);
             return;
         }
 
-        /*
-         * If we reach here, maintenance is enabled and user is not an Admin.
-         */
         response.setStatus(HttpServletResponse.SC_SERVICE_UNAVAILABLE);
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.getWriter().write("{\"error\": \"Service Unavailable\", \"message\": \"The system is currently undergoing maintenance.\"}");
@@ -106,7 +86,7 @@ public class MaintenanceModeFilter extends OncePerRequestFilter {
                     return json.get("maintenanceMode").asBoolean();
                 }
             } catch (Exception e) {
-                // Ignore parse errors, default to false
+                
             }
         }
         return false;

@@ -22,10 +22,6 @@ public class NotificationController {
     @Autowired
     private NotificationService notificationService;
 
-    /**
-     * GET /api/notifications?page=0&size=20
-     * Returns paginated notifications for the authenticated user, newest first.
-     */
     @GetMapping
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<?> getMyNotifications(
@@ -41,10 +37,6 @@ public class NotificationController {
         }
     }
 
-    /**
-     * GET /api/notifications/unread
-     * Returns all unread notifications for the authenticated user.
-     */
     @GetMapping("/unread")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<?> getMyUnreadNotifications() {
@@ -58,10 +50,6 @@ public class NotificationController {
         }
     }
 
-    /**
-     * PATCH /api/notifications/{id}/read
-     * Marks a specific notification as read. Verifies ownership server-side.
-     */
     @PatchMapping("/{id}/read")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<?> markAsRead(@PathVariable UUID id) {
@@ -77,10 +65,6 @@ public class NotificationController {
         }
     }
 
-    /**
-     * PATCH /api/notifications/read-all
-     * Marks all notifications as read for the authenticated user.
-     */
     @PatchMapping("/read-all")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<?> markAllAsRead() {

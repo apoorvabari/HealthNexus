@@ -29,10 +29,6 @@ public class UserController {
     @Autowired
     private UserService userService;
 
-    // =========================================================
-    // PUBLIC REGISTRATION
-    // =========================================================
-
     @PostMapping("/register")
     public ResponseEntity<RegisterResponse> registerUser(
             @Valid @RequestBody RegisterRequest request) {
@@ -46,10 +42,6 @@ public class UserController {
         );
     }
 
-    // =========================================================
-    // LOGIN
-    // =========================================================
-
     @PostMapping("/login")
     public ResponseEntity<LoginResponse> login(
             @Valid @RequestBody LoginRequest request) {
@@ -59,10 +51,6 @@ public class UserController {
         );
     }
 
-    // =========================================================
-    // LOGOUT
-    // =========================================================
-
     @PostMapping("/logout")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<LogoutResponse> logout() {
@@ -71,10 +59,6 @@ public class UserController {
                 userService.logout()
         );
     }
-
-    // =========================================================
-    // CURRENT USER PROFILE
-    // =========================================================
 
     @GetMapping("/profile")
     public ResponseEntity<RegisterResponse> getProfile(
@@ -90,23 +74,6 @@ public class UserController {
         );
     }
 
-    // =========================================================
-    // GET USER BY ID
-    // =========================================================
-
-    /*
-     * ADMIN:
-     *      Can access users inside own hospital.
-     *
-     * DOCTOR:
-     *      Own profile only.
-     *
-     * RECEPTIONIST:
-     *      Own profile only.
-     *
-     * PATIENT:
-     *      Own profile only.
-     */
     @GetMapping("/{id}")
     @PreAuthorize("""
         hasRole('ADMIN')
@@ -122,15 +89,6 @@ public class UserController {
         );
     }
 
-    // =========================================================
-    // GET ALL USERS
-    // =========================================================
-
-    /*
-     * Generic User Management listing is ADMIN-only.
-     *
-     * DOCTOR / RECEPTIONIST / PATIENT must not enumerate users.
-     */
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<PageResponse<RegisterResponse>> getAllUsers(
@@ -147,13 +105,6 @@ public class UserController {
         );
     }
 
-    // =========================================================
-    // FILTER USERS
-    // =========================================================
-
-    /*
-     * Generic User Management filtering is ADMIN-only.
-     */
     @GetMapping("/filter")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<List<RegisterResponse>> filterUsers(
@@ -164,26 +115,6 @@ public class UserController {
         );
     }
 
-    // =========================================================
-    // UPDATE USER
-    // =========================================================
-
-    /*
-     * ADMIN:
-     *      Can update DOCTOR / RECEPTIONIST / PATIENT
-     *      from the same hospital.
-     *
-     *      CANNOT update another ADMIN.
-     *
-     * DOCTOR:
-     *      Own profile only.
-     *
-     * RECEPTIONIST:
-     *      Own profile only.
-     *
-     * PATIENT:
-     *      Own profile only.
-     */
     @PutMapping("/{id}")
     @PreAuthorize("""
         hasRole('ADMIN')
@@ -203,16 +134,6 @@ public class UserController {
         );
     }
 
-    // =========================================================
-    // DELETE USER
-    // =========================================================
-
-    /*
-     * Only ADMIN can delete accounts through generic
-     * User Management.
-     *
-     * ADMIN accounts cannot be deleted here.
-     */
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<String> deleteUser(
@@ -224,10 +145,6 @@ public class UserController {
                 "User deleted successfully"
         );
     }
-
-    // =========================================================
-    // UPDATE LAST LOGIN
-    // =========================================================
 
     @PostMapping("/update-last-login")
     public ResponseEntity<String> updateLastLogin(
@@ -245,20 +162,12 @@ public class UserController {
         );
     }
 
-    // =========================================================
-    // FORGOT PASSWORD
-    // =========================================================
-
     @PostMapping("/forgot-password")
     public ResponseEntity<java.util.Map<String, String>> forgotPassword(
             @RequestParam String email) {
 
         userService.requestPasswordReset(email);
 
-        /*
-         * Always return the same response.
-         * This prevents account/email enumeration.
-         */
         return ResponseEntity.ok(
                 java.util.Map.of(
                         "message",
@@ -267,10 +176,6 @@ public class UserController {
                 )
         );
     }
-
-    // =========================================================
-    // RESET PASSWORD
-    // =========================================================
 
     @PostMapping("/reset-password")
     public ResponseEntity<String> resetPassword(
@@ -282,10 +187,6 @@ public class UserController {
                 "Password reset successfully"
         );
     }
-
-    // =========================================================
-    // EMAIL VERIFICATION
-    // =========================================================
 
     @PostMapping("/verify-email")
     public ResponseEntity<java.util.Map<String, String>> verifyEmail(

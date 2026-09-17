@@ -83,7 +83,6 @@ public AdminDashboardStatsResponse getDashboardStats() {
                     DoctorEntity.VerificationStatus.REJECTED
             );
 
-
     long totalHospitals = hospitalService.count();
 
     long pendingHospitals =
@@ -101,7 +100,6 @@ public AdminDashboardStatsResponse getDashboardStats() {
                     HospitalEntity.VerificationStatus.REJECTED
             );
 
-
     long totalUsers = userService.count();
 
     long activeUsers =
@@ -111,29 +109,24 @@ public AdminDashboardStatsResponse getDashboardStats() {
             userService.count() -
             userService.countByIsDeletedFalse();
 
-
     return AdminDashboardStatsResponse.builder()
 
-            // Doctors
             .totalDoctors(totalDoctors)
             .pendingDoctors(pendingDoctors)
             .approvedDoctors(approvedDoctors)
             .rejectedDoctors(rejectedDoctors)
 
-            // Hospitals
             .totalHospitals(totalHospitals)
             .pendingHospitals(pendingHospitals)
             .approvedHospitals(approvedHospitals)
             .rejectedHospitals(rejectedHospitals)
 
-            // Users
             .totalUsers(totalUsers)
             .activeUsers(activeUsers)
             .deletedUsers(deletedUsers)
 
             .build();
 }
-
 
     @Override
 @Transactional
@@ -437,11 +430,8 @@ public HospitalResponse updateHospitalVerification(
         long totalHospitals = hospitalService.count();
         long totalAppointments = appointmentService.count();
 
-        // Count today's appointments
         long appointmentsToday = appointmentService.countByAppointmentDate(LocalDate.now());
-        // Note: adjust the method name above if your AppointmentRepo uses a different
-        // query for dates
-
+        
         return AnalyticsResponse.builder()
                 .totalDoctors(totalDoctors)
                 .totalPatients(totalPatients)
@@ -481,11 +471,11 @@ public HospitalResponse updateHospitalVerification(
                 validateGeneralSettings(settingsJson);
                 break;
             case "USER_ACCOUNT_SETTINGS":
-                // validateUserAccountSettings(settingsJson);
+                
                 break;
             case "ROLE_SETTINGS":
                 break;
-            // Allow other keys to be bypassed for now until explicitly required by prompt
+            
         }
 
         AdminSystemSettingsEntity setting = systemSettingsRepo.findBySettingKey(settingKey)
@@ -540,10 +530,7 @@ public HospitalResponse updateHospitalVerification(
         if (!json.hasNonNull("language") || json.get("language").asText().trim().isEmpty()) {
             throw new IllegalArgumentException("Language is required");
         }
-        // Just keeping English as per the user's snippet
-        // if (!json.get("language").asText().trim().equals("English")) {
-        //     throw new IllegalArgumentException("Unsupported language: " + language);
-        // }
+        
     }
 
     private boolean isValidEmail(String email) {

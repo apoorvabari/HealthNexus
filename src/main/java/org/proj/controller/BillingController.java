@@ -28,11 +28,6 @@ public class BillingController {
     @Autowired
     private BillingService billingService;
 
-
-    // =========================================================
-    // GENERATE INVOICE
-    // =========================================================
-
     @PostMapping("/generate")
     @PreAuthorize("hasAnyRole('ADMIN', 'DOCTOR')")
     public ResponseEntity<?> generateInvoice(
@@ -70,11 +65,6 @@ public class BillingController {
             );
         }
     }
-
-
-    // =========================================================
-    // PAY INVOICE
-    // =========================================================
 
     @PostMapping("/{id}/pay")
     @PreAuthorize("hasAnyRole('ADMIN', 'PATIENT')")
@@ -121,11 +111,6 @@ public class BillingController {
         }
     }
 
-
-    // =========================================================
-    // GET BILLING BY ID
-    // =========================================================
-
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'DOCTOR', 'PATIENT', 'RECEPTIONIST')")
     public ResponseEntity<?> getBillingById(
@@ -159,11 +144,6 @@ public class BillingController {
             );
         }
     }
-
-
-    // =========================================================
-    // GET BILLING BY APPOINTMENT
-    // =========================================================
 
     @GetMapping("/appointment/{appointmentId}")
     @PreAuthorize("hasAnyRole('ADMIN', 'DOCTOR', 'PATIENT', 'RECEPTIONIST')")
@@ -202,11 +182,6 @@ public class BillingController {
         }
     }
 
-
-    // =========================================================
-    // GET PATIENT BILLING
-    // =========================================================
-
     @GetMapping("/patient/{patientId}")
     @PreAuthorize("hasAnyRole('ADMIN', 'DOCTOR', 'PATIENT', 'RECEPTIONIST')")
     public ResponseEntity<?> getBillingByPatientId(
@@ -241,11 +216,6 @@ public class BillingController {
             );
         }
     }
-
-
-    // =========================================================
-    // RECEIPT PDF
-    // =========================================================
 
     @GetMapping("/{id}/receipt")
     @PreAuthorize("hasAnyRole('ADMIN', 'DOCTOR', 'PATIENT', 'RECEPTIONIST')")
@@ -294,11 +264,6 @@ public class BillingController {
             );
         }
     }
-
-
-    // =========================================================
-    // ERROR RESPONSE
-    // =========================================================
 
     private ResponseEntity<Map<String, String>>
     buildErrorResponse(

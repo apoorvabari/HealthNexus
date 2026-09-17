@@ -70,15 +70,6 @@ public class UserMapper {
             );
         }
 
-        /*
-         * Deliberately do NOT update:
-         * - role
-         * - isActive
-         * - isDeleted
-         * - password
-         *
-         * These are security-controlled fields.
-         */
     }
 
     public RegisterResponse toResponse(
