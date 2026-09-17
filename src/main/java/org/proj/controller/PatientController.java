@@ -6,6 +6,8 @@ import org.proj.dto.PatientRequest;
 import org.proj.dto.PatientResponse;
 import org.proj.service.MedicalHistoryService;
 import org.proj.service.PatientService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -24,6 +26,9 @@ import java.util.UUID;
 @RequestMapping("/api/patients")
 public class PatientController {
 
+    private static final Logger logger =
+            LoggerFactory.getLogger(PatientController.class);
+
     @Autowired
     private PatientService patientService;
 
@@ -35,7 +40,8 @@ public class PatientController {
     public ResponseEntity<PatientResponse> createPatient(
             @Valid @RequestBody PatientRequest request) {
 
-        PatientResponse response = patientService.createPatient(request);
+        PatientResponse response =
+                patientService.createPatient(request);
 
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
@@ -52,9 +58,9 @@ public class PatientController {
             @PathVariable UUID patientId) {
 
         try {
-
             List<MedicalHistoryResponse> history =
-                    medicalHistoryService.getPatientMedicalHistory(patientId);
+                    medicalHistoryService
+                            .getPatientMedicalHistory(patientId);
 
             return ResponseEntity.ok(history);
 
@@ -62,24 +68,23 @@ public class PatientController {
 
             return buildErrorResponse(
                     HttpStatus.FORBIDDEN,
-                    e.getMessage()
-            );
+                    e.getMessage());
 
         } catch (IllegalArgumentException e) {
 
             return buildErrorResponse(
                     HttpStatus.NOT_FOUND,
-                    e.getMessage()
-            );
+                    e.getMessage());
 
         } catch (Exception e) {
 
-            e.printStackTrace();
+            logger.error(
+                    "Error while fetching medical history",
+                    e);
 
             return buildErrorResponse(
                     HttpStatus.INTERNAL_SERVER_ERROR,
-                    "An error occurred while fetching medical history"
-            );
+                    "An error occurred while fetching medical history");
         }
     }
 
@@ -89,15 +94,16 @@ public class PatientController {
             @PathVariable UUID patientId) {
 
         try {
-
             byte[] pdf =
-                    medicalHistoryService.generateMedicalHistoryPdf(patientId);
+                    medicalHistoryService
+                            .generateMedicalHistoryPdf(patientId);
 
             return ResponseEntity.ok()
                     .header(
                             HttpHeaders.CONTENT_DISPOSITION,
-                            "inline; filename=healthnexus-medical-history-" + patientId + ".pdf"
-                    )
+                            "inline; filename=healthnexus-medical-history-"
+                                    + patientId
+                                    + ".pdf")
                     .contentType(MediaType.APPLICATION_PDF)
                     .body(pdf);
 
@@ -105,24 +111,23 @@ public class PatientController {
 
             return buildErrorResponse(
                     HttpStatus.FORBIDDEN,
-                    e.getMessage()
-            );
+                    e.getMessage());
 
         } catch (IllegalArgumentException e) {
 
             return buildErrorResponse(
                     HttpStatus.NOT_FOUND,
-                    e.getMessage()
-            );
+                    e.getMessage());
 
         } catch (Exception e) {
 
-            e.printStackTrace();
+            logger.error(
+                    "Error while generating medical history PDF",
+                    e);
 
             return buildErrorResponse(
                     HttpStatus.INTERNAL_SERVER_ERROR,
-                    "An error occurred while generating medical history PDF"
-            );
+                    "An error occurred while generating medical history PDF");
         }
     }
 
@@ -131,7 +136,8 @@ public class PatientController {
     public ResponseEntity<PatientResponse> getPatientById(
             @PathVariable UUID id) {
 
-        return ResponseEntity.ok(patientService.getPatientById(id));
+        return ResponseEntity.ok(
+                patientService.getPatientById(id));
     }
 
     @GetMapping
@@ -139,24 +145,24 @@ public class PatientController {
     public ResponseEntity<?> getAllPatients() {
 
         try {
-
-            return ResponseEntity.ok(patientService.getAllPatients());
+            return ResponseEntity.ok(
+                    patientService.getAllPatients());
 
         } catch (AccessDeniedException e) {
 
             return buildErrorResponse(
                     HttpStatus.FORBIDDEN,
-                    e.getMessage()
-            );
+                    e.getMessage());
 
         } catch (Exception e) {
 
-            e.printStackTrace();
+            logger.error(
+                    "Error while fetching patients",
+                    e);
 
             return buildErrorResponse(
                     HttpStatus.INTERNAL_SERVER_ERROR,
-                    "An error occurred while fetching patients"
-            );
+                    "An error occurred while fetching patients");
         }
     }
 
@@ -166,8 +172,7 @@ public class PatientController {
             @PathVariable UUID accountId) {
 
         return ResponseEntity.ok(
-                patientService.getPatientByAccountId(accountId)
-        );
+                patientService.getPatientByAccountId(accountId));
     }
 
     @PutMapping("/{id}")
@@ -177,8 +182,7 @@ public class PatientController {
             @Valid @RequestBody PatientRequest request) {
 
         return ResponseEntity.ok(
-                patientService.updatePatient(id, request)
-        );
+                patientService.updatePatient(id, request));
     }
 
     @DeleteMapping("/{id}")
@@ -189,8 +193,7 @@ public class PatientController {
         patientService.deletePatient(id);
 
         return ResponseEntity.ok(
-                "Patient profile deactivated successfully"
-        );
+                "Patient profile deactivated successfully");
     }
 
     private ResponseEntity<Map<String, String>> buildErrorResponse(

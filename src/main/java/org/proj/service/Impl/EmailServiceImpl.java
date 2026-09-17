@@ -2,6 +2,8 @@ package org.proj.service.impl;
 
 import lombok.RequiredArgsConstructor;
 import org.proj.service.EmailService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
@@ -11,6 +13,9 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class EmailServiceImpl implements EmailService {
 
+    private static final Logger logger =
+            LoggerFactory.getLogger(EmailServiceImpl.class);
+
     private final JavaMailSender mailSender;
 
     @Value("${spring.mail.username}")
@@ -19,7 +24,7 @@ public class EmailServiceImpl implements EmailService {
     @Value("${app.password-reset.frontend-url}")
     private String passwordResetFrontendUrl;
 
-    @Value("${app.frontend.base-url:http://localhost:8081}")
+    @Value("${app.frontend.base-url}")
     private String frontendBaseUrl;
 
     @Override
@@ -52,24 +57,18 @@ public class EmailServiceImpl implements EmailService {
                         + "HealthNexus"
         );
 
-        System.out.println("========================================");
-        System.out.println("PASSWORD RESET EMAIL");
-        System.out.println("FROM: " + fromEmail);
-        System.out.println("TO: " + email);
-        System.out.println("========================================");
-
         try {
 
             mailSender.send(message);
 
-            System.out.println("EMAIL SENT SUCCESSFULLY");
-            System.out.println("========================================");
+            logger.info(
+                    "Password reset email sent successfully");
 
         } catch (Exception e) {
 
-            System.err.println("EMAIL SENDING FAILED");
-            System.err.println("ERROR: " + e.getClass().getName());
-            System.err.println("MESSAGE: " + e.getMessage());
+            logger.error(
+                    "Failed to send password reset email",
+                    e);
 
             throw e;
         }
@@ -104,24 +103,18 @@ public class EmailServiceImpl implements EmailService {
                         + "HealthNexus"
         );
 
-        System.out.println("========================================");
-        System.out.println("EMAIL VERIFICATION");
-        System.out.println("FROM: " + fromEmail);
-        System.out.println("TO: " + email);
-        System.out.println("========================================");
-
         try {
 
             mailSender.send(message);
 
-            System.out.println("VERIFICATION EMAIL SENT SUCCESSFULLY");
-            System.out.println("========================================");
+            logger.info(
+                    "Email verification email sent successfully");
 
         } catch (Exception e) {
 
-            System.err.println("VERIFICATION EMAIL SENDING FAILED");
-            System.err.println("ERROR: " + e.getClass().getName());
-            System.err.println("MESSAGE: " + e.getMessage());
+            logger.error(
+                    "Failed to send verification email",
+                    e);
 
             throw e;
         }
