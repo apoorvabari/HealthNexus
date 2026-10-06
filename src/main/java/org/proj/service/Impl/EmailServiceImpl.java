@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -28,6 +29,7 @@ public class EmailServiceImpl implements EmailService {
     private String frontendBaseUrl;
 
     @Override
+    @Async
     public void sendPasswordResetEmail(
             String email,
             String token) {
@@ -67,14 +69,16 @@ public class EmailServiceImpl implements EmailService {
         } catch (Exception e) {
 
             logger.error(
-                    "Failed to send password reset email",
+                    "Failed to send password reset email to recipient: {}",
+                    email,
                     e);
 
-            throw e;
+            throw new RuntimeException("Failed to send password reset email", e);
         }
     }
 
     @Override
+    @Async
     public void sendVerificationEmail(
             String email,
             String token) {
@@ -113,10 +117,11 @@ public class EmailServiceImpl implements EmailService {
         } catch (Exception e) {
 
             logger.error(
-                    "Failed to send verification email",
+                    "Failed to send verification email to recipient: {}",
+                    email,
                     e);
 
-            throw e;
+            throw new RuntimeException("Failed to send verification email", e);
         }
     }
 }

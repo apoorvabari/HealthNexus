@@ -93,7 +93,7 @@ public class DoctorController {
             @RequestParam(defaultValue = "10") int size,
             org.springframework.security.core.Authentication authentication) {
         boolean isAdmin = authentication.getAuthorities().stream()
-                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN") || a.getAuthority().equals("ROLE_RECEPTIONIST"));
         return ResponseEntity.ok(doctorService.getAllDoctors(search, page, size, isAdmin));
     }
 

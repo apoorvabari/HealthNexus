@@ -63,6 +63,11 @@ public interface UserRepo extends JpaRepository<UserEntity, UUID> {
         WHERE u.isDeleted = false
         AND UPPER(u.role.roleName) <> 'ADMIN'
         AND (
+            :role IS NULL
+            OR :role = ''
+            OR UPPER(u.role.roleName) = UPPER(:role)
+        )
+        AND (
             EXISTS (
                 SELECT 1
                 FROM AdminEntity a
@@ -97,10 +102,12 @@ public interface UserRepo extends JpaRepository<UserEntity, UUID> {
             OR LOWER(u.lastName) LIKE LOWER(CONCAT('%', :search, '%'))
             OR LOWER(u.phoneNumber) LIKE LOWER(CONCAT('%', :search, '%'))
         )
+        ORDER BY u.lastName ASC, u.firstName ASC, u.id ASC
         """)
     Page<UserEntity> searchUsersByHospital(
             @Param("hospitalId") UUID hospitalId,
             @Param("search") String search,
+            @Param("role") String role,
             Pageable pageable
     );
 
@@ -248,6 +255,59 @@ public interface UserRepo extends JpaRepository<UserEntity, UUID> {
             @Param("isActive") Boolean isActive,
             @Param("isDeleted") Boolean isDeleted
     );
+
+    @Query("""
+        SELECT CASE WHEN COUNT(u) > 0 THEN true ELSE false END
+        FROM UserEntity u
+        WHERE u.id = :userId
+        AND u.isDeleted = false
+        AND (
+            EXISTS (SELECT 1 FROM AdminEntity a WHERE a.account.id = u.id AND a.hospital.id = :hospitalId)
+            OR EXISTS (SELECT 1 FROM DoctorEntity d WHERE d.account.id = u.id AND d.hospital.id = :hospitalId)
+            OR EXISTS (SELECT 1 FROM ReceptionistEntity r WHERE r.account.id = u.id AND r.hospital.id = :hospitalId)
+            OR EXISTS (SELECT 1 FROM PatientEntity p WHERE p.account.id = u.id AND p.hospital.id = :hospitalId)
+        )
+        """)
+    boolean existsByIdAndHospitalId(@Param("userId") UUID userId, @Param("hospitalId") UUID hospitalId);
+
+    @Query("""
+        SELECT COUNT(DISTINCT u.id)
+        FROM UserEntity u
+        WHERE u.isDeleted = false
+        AND (
+            EXISTS (SELECT 1 FROM AdminEntity a WHERE a.account.id = u.id AND a.hospital.id = :hospitalId)
+            OR EXISTS (SELECT 1 FROM DoctorEntity d WHERE d.account.id = u.id AND d.hospital.id = :hospitalId)
+            OR EXISTS (SELECT 1 FROM ReceptionistEntity r WHERE r.account.id = u.id AND r.hospital.id = :hospitalId)
+            OR EXISTS (SELECT 1 FROM PatientEntity p WHERE p.account.id = u.id AND p.hospital.id = :hospitalId)
+        )
+        """)
+    long countByHospitalId(@Param("hospitalId") UUID hospitalId);
+
+    @Query("""
+        SELECT COUNT(DISTINCT u.id)
+        FROM UserEntity u
+        WHERE u.isDeleted = false AND u.isActive = true
+        AND (
+            EXISTS (SELECT 1 FROM AdminEntity a WHERE a.account.id = u.id AND a.hospital.id = :hospitalId)
+            OR EXISTS (SELECT 1 FROM DoctorEntity d WHERE d.account.id = u.id AND d.hospital.id = :hospitalId)
+            OR EXISTS (SELECT 1 FROM ReceptionistEntity r WHERE r.account.id = u.id AND r.hospital.id = :hospitalId)
+            OR EXISTS (SELECT 1 FROM PatientEntity p WHERE p.account.id = u.id AND p.hospital.id = :hospitalId)
+        )
+        """)
+    long countActiveByHospitalId(@Param("hospitalId") UUID hospitalId);
+
+    @Query("""
+        SELECT COUNT(DISTINCT u.id)
+        FROM UserEntity u
+        WHERE u.isDeleted = true
+        AND (
+            EXISTS (SELECT 1 FROM AdminEntity a WHERE a.account.id = u.id AND a.hospital.id = :hospitalId)
+            OR EXISTS (SELECT 1 FROM DoctorEntity d WHERE d.account.id = u.id AND d.hospital.id = :hospitalId)
+            OR EXISTS (SELECT 1 FROM ReceptionistEntity r WHERE r.account.id = u.id AND r.hospital.id = :hospitalId)
+            OR EXISTS (SELECT 1 FROM PatientEntity p WHERE p.account.id = u.id AND p.hospital.id = :hospitalId)
+        )
+        """)
+    long countDeletedByHospitalId(@Param("hospitalId") UUID hospitalId);
 
     Optional<UserEntity> findByEmail(String email);
 

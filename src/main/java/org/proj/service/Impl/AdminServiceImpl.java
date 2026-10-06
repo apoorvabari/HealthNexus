@@ -8,6 +8,7 @@ import org.proj.mapper.UserMapper;
 import org.proj.repository.*;
 import org.proj.service.*;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,12 +40,6 @@ public class AdminServiceImpl implements AdminService {
     private UserService userService;
 
     @Autowired
-    private PatientService patientService;
-
-    @Autowired
-    private AppointmentService appointmentService;
-
-    @Autowired
     private AdminSystemSettingsRepo systemSettingsRepo;
 
     @Autowired
@@ -52,6 +47,9 @@ public class AdminServiceImpl implements AdminService {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private TenantContextService tenantContextService;
 
     @Autowired
     private DoctorMapper doctorMapper;
@@ -62,81 +60,92 @@ public class AdminServiceImpl implements AdminService {
     @Autowired
     private UserMapper userMapper;
 
-    @Override
-@Transactional(readOnly = true)
-public AdminDashboardStatsResponse getDashboardStats() {
+    @Autowired
+    private UserRepo userRepo;
 
-    long totalDoctors = doctorService.count();
+    @Autowired
+    private DoctorRepo doctorRepo;
 
-    long pendingDoctors =
-            doctorService.countByVerificationStatus(
-                    DoctorEntity.VerificationStatus.PENDING
-            );
+    @Autowired
+    private PatientRepo patientRepo;
 
-    long approvedDoctors =
-            doctorService.countByVerificationStatus(
-                    DoctorEntity.VerificationStatus.APPROVED
-            );
+    @Autowired
+    private AppointmentRepo appointmentRepo;
 
-    long rejectedDoctors =
-            doctorService.countByVerificationStatus(
-                    DoctorEntity.VerificationStatus.REJECTED
-            );
+    @Autowired
+    private HospitalRepo hospitalRepo;
 
-    long totalHospitals = hospitalService.count();
+    // =========================================================
+    // PRIVATE HELPERS
+    // =========================================================
 
-    long pendingHospitals =
-            hospitalService.countByVerificationStatus(
-                    HospitalEntity.VerificationStatus.PENDING
-            );
+    /**
+     * Returns the HospitalEntity the current admin is authorized for.
+     * Throws AccessDeniedException if no hospital context can be resolved
+     * (e.g. admin has no assignment or the X-Hospital-Id header is missing/wrong).
+     */
+    private HospitalEntity requireAdminHospital() {
+        UUID hospitalId = tenantContextService.getCurrentUserHospitalId();
+        if (hospitalId == null) {
+            throw new AccessDeniedException(
+                    "No authorized hospital context found for the current admin");
+        }
+        return hospitalService.findHospitalById(hospitalId);
+    }
 
-    long approvedHospitals =
-            hospitalService.countByVerificationStatus(
-                    HospitalEntity.VerificationStatus.APPROVED
-            );
+    /**
+     * Asserts that the current admin is authorized for the given hospitalId.
+     * Throws AccessDeniedException otherwise.
+     */
+    private void assertHospitalAccess(UUID hospitalId) {
+        if (!tenantContextService.hasCurrentUserHospitalAccess(hospitalId)) {
+            throw new AccessDeniedException(
+                    "You are not authorized to manage this hospital");
+        }
+    }
 
-    long rejectedHospitals =
-            hospitalService.countByVerificationStatus(
-                    HospitalEntity.VerificationStatus.REJECTED
-            );
-
-    long totalUsers = userService.count();
-
-    long activeUsers =
-            userService.countByIsActiveTrue();
-
-    long deletedUsers =
-            userService.count() -
-            userService.countByIsDeletedFalse();
-
-    return AdminDashboardStatsResponse.builder()
-
-            .totalDoctors(totalDoctors)
-            .pendingDoctors(pendingDoctors)
-            .approvedDoctors(approvedDoctors)
-            .rejectedDoctors(rejectedDoctors)
-
-            .totalHospitals(totalHospitals)
-            .pendingHospitals(pendingHospitals)
-            .approvedHospitals(approvedHospitals)
-            .rejectedHospitals(rejectedHospitals)
-
-            .totalUsers(totalUsers)
-            .activeUsers(activeUsers)
-            .deletedUsers(deletedUsers)
-
-            .build();
-}
+    // =========================================================
 
     @Override
-@Transactional
-public HospitalResponse updateHospitalVerification(
-        UUID hospitalId,
-        HospitalVerificationRequest request,
-        UUID adminId) {
+    @Transactional(readOnly = true)
+    public AdminDashboardStatsResponse getDashboardStats() {
+        UUID hospitalId = requireAdminHospital().getId();
 
-    HospitalEntity hospital =
-            hospitalService.findHospitalById(hospitalId);
+        long totalDoctors = doctorRepo.countByHospitalId(hospitalId);
+        long pendingDoctors = doctorRepo.countByHospitalIdAndVerificationStatus(hospitalId, DoctorEntity.VerificationStatus.PENDING);
+        long approvedDoctors = doctorRepo.countByHospitalIdAndVerificationStatus(hospitalId, DoctorEntity.VerificationStatus.APPROVED);
+        long rejectedDoctors = doctorRepo.countByHospitalIdAndVerificationStatus(hospitalId, DoctorEntity.VerificationStatus.REJECTED);
+
+        long totalUsers = userRepo.countByHospitalId(hospitalId);
+        long activeUsers = userRepo.countActiveByHospitalId(hospitalId);
+
+        return AdminDashboardStatsResponse.builder()
+                .totalDoctors(totalDoctors)
+                .pendingDoctors(pendingDoctors)
+                .approvedDoctors(approvedDoctors)
+                .rejectedDoctors(rejectedDoctors)
+                .totalHospitals(1)
+                .pendingHospitals(hospitalRepo.countByIdAndVerificationStatus(hospitalId, HospitalEntity.VerificationStatus.PENDING))
+                .approvedHospitals(hospitalRepo.countByIdAndVerificationStatus(hospitalId, HospitalEntity.VerificationStatus.APPROVED))
+                .rejectedHospitals(hospitalRepo.countByIdAndVerificationStatus(hospitalId, HospitalEntity.VerificationStatus.REJECTED))
+                .totalUsers(totalUsers)
+                .activeUsers(activeUsers)
+                .deletedUsers(userRepo.countDeletedByHospitalId(hospitalId))
+                .build();
+    }
+
+    @Override
+    @Transactional
+    public HospitalResponse updateHospitalVerification(
+            UUID hospitalId,
+            HospitalVerificationRequest request,
+            UUID adminId) {
+
+        // Fix 4: enforce tenant scope — 403 if admin doesn't own this hospital
+        assertHospitalAccess(hospitalId);
+
+        HospitalEntity hospital =
+                hospitalService.findHospitalById(hospitalId);
 
     if (request == null || request.getVerificationStatus() == null) {
         throw new IllegalArgumentException(
@@ -181,7 +190,8 @@ public HospitalResponse updateHospitalVerification(
                 "HospitalEntity",
                 hospitalId,
                 adminId,
-                "Clinic approved after details and location verification"
+                "Clinic approved after details and location verification",
+                hospital
         );
 
     } else if (
@@ -217,7 +227,8 @@ public HospitalResponse updateHospitalVerification(
                 hospitalId,
                 adminId,
                 "Clinic rejected: "
-                        + request.getVerificationRemarks().trim()
+                        + request.getVerificationRemarks().trim(),
+                hospital
         );
 
     } else {
@@ -240,7 +251,8 @@ public HospitalResponse updateHospitalVerification(
                 "HospitalEntity",
                 hospitalId,
                 adminId,
-                "Clinic verification progress updated"
+                "Clinic verification progress updated",
+                hospital
         );
     }
 
@@ -254,7 +266,13 @@ public HospitalResponse updateHospitalVerification(
             DoctorVerificationRequest request,
             UUID adminId) {
 
+        // Fix 3: resolve the admin's hospital first, then do a tenant-scoped lookup
+        HospitalEntity adminHospital = requireAdminHospital();
+        
         DoctorEntity doctor = doctorService.findDoctorById(doctorId);
+        if (doctor.getHospital() == null || !doctor.getHospital().getId().equals(adminHospital.getId())) {
+            throw new AccessDeniedException("You are not authorized to manage this doctor");
+        }
 
         if (request == null || request.getVerificationStatus() == null) {
             throw new IllegalArgumentException(
@@ -299,7 +317,8 @@ public HospitalResponse updateHospitalVerification(
                     "DoctorEntity",
                     doctorId,
                     adminId,
-                    "Doctor approved after license, degree and specialization verification");
+                    "Doctor approved after license, degree and specialization verification",
+                    adminHospital);
         }
 
         else if (request.getVerificationStatus() == DoctorEntity.VerificationStatus.REJECTED) {
@@ -330,7 +349,8 @@ public HospitalResponse updateHospitalVerification(
                     doctorId,
                     adminId,
                     "Doctor rejected: "
-                            + request.getVerificationRemarks().trim());
+                            + request.getVerificationRemarks().trim(),
+                    adminHospital);
         }
 
         else {
@@ -351,7 +371,8 @@ public HospitalResponse updateHospitalVerification(
                     "DoctorEntity",
                     doctorId,
                     adminId,
-                    "Doctor verification progress updated");
+                    "Doctor verification progress updated",
+                    adminHospital);
         }
 
         return doctorMapper.toResponse(doctor);
@@ -360,7 +381,12 @@ public HospitalResponse updateHospitalVerification(
     @Override
     @Transactional
     public DoctorResponse updateDoctorStatus(UUID doctorId, StatusUpdateRequest request, UUID adminId) {
+        // Fix 3: tenant-scoped doctor lookup
+        HospitalEntity adminHospital = requireAdminHospital();
         DoctorEntity doctor = doctorService.findDoctorById(doctorId);
+        if (doctor.getHospital() == null || !doctor.getHospital().getId().equals(adminHospital.getId())) {
+            throw new AccessDeniedException("You are not authorized to manage this doctor");
+        }
 
         try {
             DoctorEntity.DoctorStatus newStatus = DoctorEntity.DoctorStatus.valueOf(request.getStatus().toUpperCase());
@@ -381,7 +407,7 @@ public HospitalResponse updateHospitalVerification(
             doctor.setStatus(newStatus);
             doctorService.save(doctor);
 
-            logAuditAction("UPDATE_DOCTOR_STATUS", "DoctorEntity", doctorId, adminId, "Status updated to " + newStatus);
+            logAuditAction("UPDATE_DOCTOR_STATUS", "DoctorEntity", doctorId, adminId, "Status updated to " + newStatus, adminHospital);
 
             return doctorMapper.toResponse(doctor);
         } catch (IllegalArgumentException e) {
@@ -392,6 +418,8 @@ public HospitalResponse updateHospitalVerification(
     @Override
     @Transactional
     public HospitalResponse updateHospitalStatus(UUID hospitalId, StatusUpdateRequest request, UUID adminId) {
+        // Fix 4: enforce tenant scope — 403 if admin doesn't own this hospital
+        assertHospitalAccess(hospitalId);
         HospitalEntity hospital = hospitalService.findHospitalById(hospitalId);
 
         try {
@@ -401,7 +429,7 @@ public HospitalResponse updateHospitalVerification(
             hospitalService.save(hospital);
 
             logAuditAction("UPDATE_HOSPITAL_STATUS", "HospitalEntity", hospitalId, adminId,
-                    "Status updated to " + newStatus);
+                    "Status updated to " + newStatus, hospital);
 
             return hospitalMapper.toResponse(hospital);
         } catch (IllegalArgumentException e) {
@@ -412,32 +440,30 @@ public HospitalResponse updateHospitalVerification(
     @Override
     @Transactional
     public RegisterResponse toggleUserBlock(UUID userId, boolean block, UUID adminId) {
+        HospitalEntity adminHospital = requireAdminHospital();
+        if (!userRepo.existsByIdAndHospitalId(userId, adminHospital.getId())) {
+            throw new AccessDeniedException("User does not belong to the current hospital");
+        }
         UserEntity user = userService.findUserById(userId);
 
         user.setIsActive(!block);
         userService.save(user);
 
         String action = block ? "BLOCK_USER" : "UNBLOCK_USER";
-        logAuditAction(action, "UserEntity", userId, adminId, "User account " + (block ? "blocked" : "unblocked"));
+        logAuditAction(action, "UserEntity", userId, adminId, "User account " + (block ? "blocked" : "unblocked"), adminHospital);
 
         return userMapper.toResponse(user);
     }
 
     @Override
     public AnalyticsResponse getPlatformAnalytics() {
-        long totalDoctors = doctorService.count();
-        long totalPatients = patientService.count();
-        long totalHospitals = hospitalService.count();
-        long totalAppointments = appointmentService.count();
-
-        long appointmentsToday = appointmentService.countByAppointmentDate(LocalDate.now());
-        
+        UUID hospitalId = requireAdminHospital().getId();
         return AnalyticsResponse.builder()
-                .totalDoctors(totalDoctors)
-                .totalPatients(totalPatients)
-                .totalHospitals(totalHospitals)
-                .totalAppointments(totalAppointments)
-                .appointmentsToday(appointmentsToday)
+                .totalDoctors(doctorRepo.countByHospitalId(hospitalId))
+                .totalPatients(patientRepo.countByHospitalId(hospitalId))
+                .totalHospitals(1)
+                .totalAppointments(appointmentRepo.countByHospitalId(hospitalId))
+                .appointmentsToday(appointmentRepo.countByAppointmentDateAndHospitalId(LocalDate.now(), hospitalId))
                 .build();
     }
 
@@ -478,11 +504,17 @@ public HospitalResponse updateHospitalVerification(
             
         }
 
-        AdminSystemSettingsEntity setting = systemSettingsRepo.findBySettingKey(settingKey)
-                .orElseGet(AdminSystemSettingsEntity::new);
+        HospitalEntity adminHospital = requireAdminHospital();
+        AdminSystemSettingsEntity setting = systemSettingsRepo.findByHospitalIdAndSettingKey(adminHospital.getId(), settingKey)
+                .orElseGet(() -> {
+                    AdminSystemSettingsEntity s = new AdminSystemSettingsEntity();
+                    s.setHospital(adminHospital);
+                    return s;
+                });
 
         setting.setSettingKey(settingKey);
         setting.setSettingValue(settingValue);
+        setting.setHospital(adminHospital);
 
         String desc = request.getDescription();
         if (desc == null || desc.isBlank()) {
@@ -492,7 +524,7 @@ public HospitalResponse updateHospitalVerification(
 
         AdminSystemSettingsEntity savedSetting = systemSettingsRepo.save(setting);
         logAuditAction("UPDATE_SETTING", "AdminSystemSettingsEntity", savedSetting.getId(), adminId,
-                "Updated setting: " + request.getSettingKey());
+                "Updated setting: " + request.getSettingKey(), adminHospital);
 
         return SystemSettingsResponse.builder()
                 .id(savedSetting.getId())
@@ -530,7 +562,6 @@ public HospitalResponse updateHospitalVerification(
         if (!json.hasNonNull("language") || json.get("language").asText().trim().isEmpty()) {
             throw new IllegalArgumentException("Language is required");
         }
-        
     }
 
     private boolean isValidEmail(String email) {
@@ -538,8 +569,10 @@ public HospitalResponse updateHospitalVerification(
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<SystemSettingsResponse> getAllSystemSettings() {
-        return systemSettingsRepo.findAll().stream()
+        HospitalEntity adminHospital = requireAdminHospital();
+        return systemSettingsRepo.findAllByHospitalId(adminHospital.getId()).stream()
                 .map(setting -> SystemSettingsResponse.builder()
                         .id(setting.getId())
                         .settingKey(setting.getSettingKey())
@@ -553,8 +586,13 @@ public HospitalResponse updateHospitalVerification(
     @Override
     @Transactional(readOnly = true)
     public PageResponse<AuditLogResponse> getAuditLogs(String search, int page, int size) {
-        Page<AdminAuditLogEntity> logPage = auditLogRepo.searchLogs(search,
+        UUID hospitalId = tenantContextService.getCurrentUserHospitalId();
+        if (hospitalId == null) {
+            throw new AccessDeniedException("Tenant hospital context is required");
+        }
+        Page<AdminAuditLogEntity> logPage = auditLogRepo.searchLogs(hospitalId, search,
                 PageRequest.of(page, size, Sort.by("timestamp").descending()));
+
         List<AuditLogResponse> content = logPage.getContent().stream()
                 .map(log -> new AuditLogResponse(
                         log.getId(),
@@ -569,13 +607,25 @@ public HospitalResponse updateHospitalVerification(
                 logPage.getTotalPages(), logPage.isLast());
     }
 
-    private void logAuditAction(String action, String entityName, UUID entityId, UUID adminId, String details) {
+    /**
+     * Fix 2: hospital is now required so the DB NOT NULL constraint is satisfied.
+     * Every mutation that creates an audit entry must resolve and pass the admin's hospital.
+     */
+    private void logAuditAction(
+            String action,
+            String entityName,
+            UUID entityId,
+            UUID adminId,
+            String details,
+            HospitalEntity hospital) {
+
         AdminAuditLogEntity auditLog = AdminAuditLogEntity.builder()
                 .action(action)
                 .entityName(entityName)
                 .entityId(entityId)
                 .performedBy(adminId)
                 .details(details)
+                .hospital(hospital)
                 .build();
         auditLogRepo.save(auditLog);
     }

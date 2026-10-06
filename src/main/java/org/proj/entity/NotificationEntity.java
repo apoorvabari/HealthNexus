@@ -28,6 +28,12 @@ public class NotificationEntity {
         CONSULTATION_COMPLETED,
         REPORT_AVAILABLE,
         INVOICE_GENERATED,
+        DOCTOR_APPROVAL_REQUIRED,
+        DOCTOR_APPROVED,
+        DOCTOR_REJECTED,
+        CLINIC_APPROVAL_REQUIRED,
+        CLINIC_APPROVED,
+        CLINIC_REJECTED,
         GENERAL
     }
 

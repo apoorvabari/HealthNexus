@@ -40,7 +40,11 @@ public class AppointmentRequest {
     @JsonFormat(pattern = "yyyy-MM-dd")
     private LocalDate appointmentDate;
 
-    @NotNull(message = "Appointment time is required")
+    /*
+     * Scheduled appointments require a planned time.
+     * WALK_IN appointments are queued immediately and receive their server-side
+     * creation/check-in time instead of consuming a predefined slot.
+     */
     @JsonFormat(pattern = "HH:mm")
     private LocalTime appointmentTime;
 

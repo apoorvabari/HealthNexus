@@ -26,12 +26,10 @@ public class AppointmentController {
     @PreAuthorize("hasAnyRole('ADMIN', 'RECEPTIONIST', 'PATIENT')")
     public ResponseEntity<AppointmentResponse> createAppointment(
             @Valid @RequestBody AppointmentRequest request) {
-        try {
-            AppointmentResponse response = appointmentService.createAppointment(request);
-            return new ResponseEntity<>(response, HttpStatus.CREATED);
-        } catch (Exception e) {
-            throw e;
-        }
+
+        AppointmentResponse response = appointmentService.createAppointment(request);
+
+        return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
 
     @GetMapping("/{id}")

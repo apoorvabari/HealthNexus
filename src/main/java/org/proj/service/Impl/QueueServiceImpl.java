@@ -1,5 +1,8 @@
 package org.proj.service.impl;
 
+import org.proj.entity.ConsultationEntity;
+import org.proj.entity.ConsultationEntity.ConsultationStatus;
+import org.proj.repository.ConsultationRepo;
 import org.proj.dto.QueueRequest;
 import org.proj.dto.QueueResponse;
 import org.proj.entity.AppointmentEntity;
@@ -7,6 +10,9 @@ import org.proj.entity.AppointmentEntity.AppointmentStatus;
 import org.proj.entity.QueueEntity;
 import org.proj.entity.QueueEntity.QueueStatus;
 import org.proj.mapper.QueueMapper;
+import org.proj.service.NotificationService;
+import org.proj.repository.ReceptionistRepo;
+import org.proj.repository.DoctorRepo;
 import org.proj.repository.QueueRepo;
 import org.proj.service.AppointmentService;
 import org.proj.service.QueueService;
@@ -32,10 +38,22 @@ public class QueueServiceImpl implements QueueService {
     private AppointmentService appointmentService;
 
     @Autowired
+    private ConsultationRepo consultationRepo;
+
+    @Autowired
     private QueueMapper queueMapper;
 
     @Autowired
     private TenantContextService tenantContextService;
+
+    @Autowired
+    private NotificationService notificationService;
+
+    @Autowired
+    private ReceptionistRepo receptionistRepo;
+
+    @Autowired
+    private DoctorRepo doctorRepo;
 
     @Override
     @Transactional
@@ -106,6 +124,21 @@ public class QueueServiceImpl implements QueueService {
             LocalDateTime startOfToday =
                     LocalDate.now().atStartOfDay();
 
+            // Serialize queue-number generation per doctor. Without a row lock,
+            // two receptionists checking in patients simultaneously can both calculate
+            // the same next queue number.
+            if (appointment.getDoctor() == null
+                    || appointment.getDoctor().getId() == null) {
+                throw new IllegalArgumentException("Appointment doctor is required");
+            }
+
+            doctorRepo.findLockedByIdAndHospitalId(
+                    appointment.getDoctor().getId(),
+                    hospitalId
+            ).orElseThrow(() -> new AccessDeniedException(
+                    "Doctor does not belong to your hospital"
+            ));
+
             long count =
                     queueRepo
                             .countByDoctorIdAndHospitalIdAndCheckedInTimeAfter(
@@ -135,6 +168,36 @@ public class QueueServiceImpl implements QueueService {
 
             QueueEntity savedQueue =
                     queueRepo.save(queue);
+
+            if (appointment.getPatient() != null && appointment.getPatient().getAccount() != null) {
+                notificationService.createNotification(
+                        appointment.getPatient().getAccount(),
+                        "Check-in Successful",
+                        "Check-in successful! Your queue token is " + savedQueue.getTokenNumber() + ".",
+                        org.proj.entity.NotificationEntity.NotificationType.QUEUE_REMINDER
+                );
+            }
+            if (appointment.getDoctor() != null && appointment.getDoctor().getAccount() != null) {
+                notificationService.createNotification(
+                        appointment.getDoctor().getAccount(),
+                        "Patient Checked In",
+                        "Patient " + (appointment.getPatient() != null ? appointment.getPatient().getAccountName() : "") + " has checked in. Token " + savedQueue.getTokenNumber() + " is waiting in queue.",
+                        org.proj.entity.NotificationEntity.NotificationType.QUEUE_REMINDER
+                );
+            }
+            if (appointment.getHospital() != null && receptionistRepo != null) {
+                List<org.proj.entity.ReceptionistEntity> receptionists = receptionistRepo.findByHospitalId(appointment.getHospital().getId());
+                for (org.proj.entity.ReceptionistEntity rec : receptionists) {
+                    if (rec.getAccount() != null) {
+                        notificationService.createNotification(
+                                rec.getAccount(),
+                                "Patient Checked In",
+                                "Patient " + (appointment.getPatient() != null ? appointment.getPatient().getAccountName() : "") + " checked in. Token " + savedQueue.getTokenNumber() + " is active.",
+                                org.proj.entity.NotificationEntity.NotificationType.QUEUE_REMINDER
+                        );
+                    }
+                }
+            }
 
             QueueResponse response =
                     queueMapper.toResponse(savedQueue);
@@ -200,9 +263,14 @@ public class QueueServiceImpl implements QueueService {
                     requireCurrentHospital();
 
             return queueRepo
-                    .findByDoctorIdAndHospitalIdAndCheckedInTimeAfterOrderByQueueNumberAsc(
+                    .findByDoctorIdAndHospitalIdAndQueueStatusInAndCheckedInTimeAfterOrderByQueueNumberAsc(
                             doctorId,
                             hospitalId,
+                            List.of(
+                                    QueueStatus.WAITING,
+                                    QueueStatus.CALLED,
+                                    QueueStatus.IN_CONSULTATION
+                            ),
                             LocalDate.now().atStartOfDay()
                     )
                     .stream()
@@ -263,28 +331,9 @@ public class QueueServiceImpl implements QueueService {
                             );
 
             if (inConsultOpt.isPresent()) {
-
-                QueueEntity consultQueue =
-                        inConsultOpt.get();
-
-                consultQueue.setQueueStatus(
-                        QueueStatus.COMPLETED
+                throw new IllegalArgumentException(
+                        "A patient is currently in consultation. Please complete the clinical visit summary before calling the next patient."
                 );
-
-                consultQueue.setConsultationEnd(
-                        LocalDateTime.now()
-                );
-
-                queueRepo.save(consultQueue);
-
-                AppointmentEntity app =
-                        consultQueue.getAppointment();
-
-                app.setAppointmentStatus(
-                        AppointmentStatus.COMPLETED
-                );
-
-                appointmentService.save(app);
             }
 
             QueueEntity nextQueue =
@@ -372,14 +421,26 @@ public class QueueServiceImpl implements QueueService {
                     LocalDateTime.now()
             );
 
-            AppointmentEntity app =
-                    queue.getAppointment();
+            AppointmentEntity app = queue.getAppointment();
+            if (app != null) {
+                app.setAppointmentStatus(AppointmentStatus.IN_PROGRESS);
+                appointmentService.save(app);
 
-            app.setAppointmentStatus(
-                    AppointmentStatus.IN_PROGRESS
-            );
+                ConsultationEntity consultation = consultationRepo
+                        .findByAppointmentIdAndAppointmentHospitalId(app.getId(), hospitalId)
+                        .orElse(null);
 
-            appointmentService.save(app);
+                if (consultation == null) {
+                    consultation = ConsultationEntity.builder()
+                            .appointment(app)
+                            .doctor(app.getDoctor())
+                            .patient(app.getPatient())
+                            .status(ConsultationStatus.STARTED)
+                            .startTime(LocalDateTime.now())
+                            .build();
+                    consultationRepo.save(consultation);
+                }
+            }
 
             QueueEntity saved =
                     queueRepo.save(queue);
@@ -451,14 +512,36 @@ public class QueueServiceImpl implements QueueService {
             AppointmentEntity app =
                     queue.getAppointment();
 
-            app.setAppointmentStatus(
-                    AppointmentStatus.COMPLETED
-            );
+            if (app != null && app.getId() != null) {
+                ConsultationEntity consultation = consultationRepo
+                        .findByAppointmentIdAndAppointmentHospitalId(app.getId(), hospitalId)
+                        .orElse(null);
 
-            appointmentService.save(app);
+                if (consultation != null) {
+                    consultation.setStatus(ConsultationStatus.COMPLETED);
+                    consultation.setEndTime(LocalDateTime.now());
+                    consultationRepo.save(consultation);
+                }
+            }
+
+            if (app != null) {
+                app.setAppointmentStatus(
+                        AppointmentStatus.COMPLETED
+                );
+                appointmentService.save(app);
+            }
 
             QueueEntity saved =
                     queueRepo.save(queue);
+
+            if (saved.getAppointment() != null && saved.getAppointment().getPatient() != null && saved.getAppointment().getPatient().getAccount() != null) {
+                notificationService.createNotification(
+                        saved.getAppointment().getPatient().getAccount(),
+                        "Consultation Completed",
+                        "Your consultation with Dr. " + (saved.getDoctor() != null && saved.getDoctor().getAccount() != null ? saved.getDoctor().getAccount().getAccountName() : "") + " has been completed.",
+                        org.proj.entity.NotificationEntity.NotificationType.CONSULTATION_COMPLETED
+                );
+            }
 
             QueueResponse response =
                     queueMapper.toResponse(saved);

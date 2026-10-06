@@ -22,7 +22,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         config.setApplicationDestinationPrefixes("/app");
     }
 
-    @org.springframework.beans.factory.annotation.Value("${app.cors.allowed-origins:http://localhost:8081,http://localhost:19006,http://localhost:8080,http://localhost:3000}")
+    @org.springframework.beans.factory.annotation.Value("${app.cors.allowed-origins:}")
     private String allowedOrigins;
 
     @Override
@@ -35,7 +35,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         registry.addEndpoint("/ws-healthnexus")
                 .setAllowedOrigins(origins)
                 .withSockJS();
-        
+
         registry.addEndpoint("/ws-healthnexus")
                 .setAllowedOrigins(origins);
     }

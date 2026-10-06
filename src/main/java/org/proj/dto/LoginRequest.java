@@ -19,4 +19,7 @@ public class LoginRequest {
 
     @NotBlank(message = "Password is required")
     private String password;
+
+    private String captchaChallengeId;
+    private String captchaAnswer;
 }

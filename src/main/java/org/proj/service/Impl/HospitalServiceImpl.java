@@ -14,6 +14,8 @@ import org.proj.security.SecurityUtils;
 import org.proj.service.HospitalService;
 import org.proj.service.TenantContextService;
 
+import org.springframework.cache.annotation.Cacheable;
+
 import lombok.RequiredArgsConstructor;
 
 import org.springframework.data.domain.Page;
@@ -126,6 +128,7 @@ public class HospitalServiceImpl implements HospitalService {
 
     @Override
     @Transactional(readOnly = true)
+    @Cacheable("publicHospitals")
     public List<PublicHospitalResponse> getPublicHospitals() {
         return hospitalRepo.findPublicHospitals()
                 .stream()
@@ -218,14 +221,22 @@ public class HospitalServiceImpl implements HospitalService {
             } else {
 
                 UUID currentHospitalId =
-                        requireCurrentHospitalId();
+                        tenantContextService.getCurrentUserHospitalId();
 
-                hospPage =
-                        hospitalRepo.searchHospitalsForTenant(
-                                currentHospitalId,
-                                search,
-                                PageRequest.of(page, size)
-                        );
+                if (currentHospitalId == null) {
+                    hospPage =
+                            hospitalRepo.searchPublicHospitals(
+                                    search,
+                                    PageRequest.of(page, size)
+                            );
+                } else {
+                    hospPage =
+                            hospitalRepo.searchHospitalsForTenant(
+                                    currentHospitalId,
+                                    search,
+                                    PageRequest.of(page, size)
+                            );
+                }
             }
 
             List<HospitalResponse> content =
@@ -406,6 +417,17 @@ public class HospitalServiceImpl implements HospitalService {
     }
 
     @Override
+    public HospitalEntity findPublicHospitalById(
+            UUID hospitalId) {
+
+        return hospitalRepo.findPublicHospitalById(hospitalId)
+                .orElseThrow(() ->
+                        new IllegalArgumentException(
+                                "Selected hospital is not available for public onboarding"
+                        ));
+    }
+
+    @Override
     public void save(HospitalEntity hospital) {
         hospitalRepo.save(hospital);
     }
@@ -422,21 +444,6 @@ public class HospitalServiceImpl implements HospitalService {
         return hospitalRepo.countByVerificationStatus(
                 verificationStatus
         );
-    }
-
-    private UUID requireCurrentHospitalId() {
-
-        UUID hospitalId =
-                tenantContextService
-                        .getCurrentUserHospitalId();
-
-        if (hospitalId == null) {
-            throw new AccessDeniedException(
-                    "Hospital context is required"
-            );
-        }
-
-        return hospitalId;
     }
 
     private synchronized String generateHospitalCode() {

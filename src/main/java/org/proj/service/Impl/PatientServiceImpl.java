@@ -115,9 +115,12 @@ public class PatientServiceImpl implements PatientService {
                         "Hospital ID is required");
             }
 
-            HospitalEntity hospital =
-                    hospitalService.findHospitalById(
-                            targetHospitalId);
+            HospitalEntity hospital;
+            if ("PATIENT".equals(role)) {
+                hospital = hospitalService.findPublicHospitalById(targetHospitalId);
+            } else {
+                hospital = hospitalService.findHospitalById(targetHospitalId);
+            }
 
             if (hospital == null) {
                 throw new IllegalArgumentException(
@@ -129,23 +132,7 @@ public class PatientServiceImpl implements PatientService {
                     .trim()
                     .isEmpty()) {
 
-                String autoCode;
-
-                do {
-
-                    autoCode =
-                            "PAT"
-                                    + UUID.randomUUID()
-                                    .toString()
-                                    .substring(0, 6)
-                                    .toUpperCase();
-
-                } while (
-                        patientRepo
-                                .existsByPatientCodeAndHospitalId(
-                                        autoCode,
-                                        targetHospitalId));
-
+                String autoCode = "PAT" + UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase();
                 request.setPatientCode(autoCode);
 
             } else if (
@@ -647,42 +634,61 @@ public class PatientServiceImpl implements PatientService {
     }
 
     @Override
-    @Transactional(readOnly = true)
-    public PatientResponse getMyProfile() {
+@Transactional(readOnly = true)
+public PatientResponse getMyProfile() {
 
-        UserEntity currentUser =
-                requireCurrentUser();
+    UserEntity currentUser = requireCurrentUser();
 
-        if (!"PATIENT".equals(
-                getRole(currentUser))) {
-
-            throw new AccessDeniedException(
-                    "Authenticated patient not found");
-        }
-
-        UUID currentHospitalId =
-                requireCurrentHospital();
-
-        PatientEntity patient =
-                patientRepo.findByAccountIdAndHospitalId(
-                        currentUser.getId(),
-                        currentHospitalId)
-                        .orElseThrow(() ->
-                                new IllegalArgumentException(
-                                        "Patient profile not found for this account"));
-
-        return patientMapper.toResponse(
-                patient);
+    if (!"PATIENT".equals(getRole(currentUser))) {
+        throw new AccessDeniedException(
+                "Authenticated user is not a patient");
     }
+
+    /*
+     * A patient is identified by the authenticated JWT account.
+     *
+     * Do NOT require X-Hospital-Id here.
+     *
+     * During initial patient onboarding, the patient may not have
+     * a tenant context stored on the frontend yet. The patient's
+     * own profile is the authoritative source for the hospital.
+     */
+    PatientEntity patient =
+            patientRepo.findByAccountId(currentUser.getId())
+                    .orElseThrow(() ->
+                            new IllegalArgumentException(
+                                    "Patient profile not found for this account"));
+
+    if (patient.getHospital() == null
+            || patient.getHospital().getId() == null) {
+
+        throw new AccessDeniedException(
+                "Patient profile has no hospital assigned");
+    }
+
+    /*
+     * Ownership is already established by:
+     * currentUser.id == patient.account.id
+     *
+     * Therefore another patient's profile cannot be returned.
+     */
+    if (patient.getAccount() == null
+            || !currentUser.getId().equals(
+                    patient.getAccount().getId())) {
+
+        throw new AccessDeniedException(
+                "You are not authorized to view this patient profile");
+    }
+
+    return patientMapper.toResponse(patient);
+}
 
     private UserEntity requireCurrentUser() {
 
         UserEntity currentUser =
                 SecurityUtils.getCurrentUser();
 
-        if (currentUser == null
-                || currentUser.getId() == null) {
-
+        if (currentUser == null) {
             throw new AccessDeniedException(
                     "Authenticated user not found");
         }
@@ -690,34 +696,30 @@ public class PatientServiceImpl implements PatientService {
         return currentUser;
     }
 
-    private String getRole(UserEntity user) {
-
-        if (user == null
-                || user.getRole() == null
-                || user.getRole().getRoleName() == null) {
-
-            throw new AccessDeniedException(
-                    "Authenticated user role is missing");
-        }
-
-        return user.getRole()
-                .getRoleName()
-                .trim()
-                .toUpperCase();
-    }
-
     private UUID requireCurrentHospital() {
 
         UUID hospitalId =
-                tenantContextService
-                        .getCurrentUserHospitalId();
+                tenantContextService.getCurrentUserHospitalId();
 
         if (hospitalId == null) {
-
             throw new AccessDeniedException(
                     "Hospital context is required");
         }
 
         return hospitalId;
+    }
+
+    private String getRole(UserEntity user) {
+
+        if (user.getRole() == null
+                || user.getRole().getRoleName() == null) {
+
+            throw new AccessDeniedException(
+                    "User role is not available");
+        }
+
+        return user.getRole()
+                .getRoleName()
+                .toUpperCase();
     }
 }

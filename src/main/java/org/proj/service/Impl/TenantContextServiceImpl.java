@@ -11,6 +11,7 @@ import org.proj.repository.ReceptionistRepo;
 import org.proj.security.SecurityUtils;
 import org.proj.service.TenantContextService;
 
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -230,6 +231,10 @@ public class TenantContextServiceImpl
         String selectedHospital =
                 request.getHeader(HOSPITAL_HEADER);
 
+        if (selectedHospital == null || selectedHospital.isBlank()) {
+            selectedHospital = request.getParameter("hospitalId");
+        }
+
         if (selectedHospital != null
                 && !selectedHospital.isBlank()) {
 
@@ -246,18 +251,12 @@ public class TenantContextServiceImpl
                     return requestedHospitalId;
                 }
 
-                return null;
-
-            } catch (IllegalArgumentException e) {
-
-                return null;
+            } catch (IllegalArgumentException ignored) {
             }
         }
 
-        if (hospitalIds.size() == 1) {
-            return hospitalIds.get(0);
-        }
-
-        return null;
+        throw new AccessDeniedException(
+                "Multi-hospital admin must explicitly provide a valid X-Hospital-Id header"
+        );
     }
 }

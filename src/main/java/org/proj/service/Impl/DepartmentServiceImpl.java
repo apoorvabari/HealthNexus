@@ -44,27 +44,27 @@ public class DepartmentServiceImpl implements DepartmentService {
             throw new IllegalArgumentException("Department request is required");
         }
 
-        UUID currentHospitalId = requireCurrentHospital();
-
         if (request.getHospitalId() == null) {
             throw new IllegalArgumentException("Hospital ID is required");
         }
 
-        if (!currentHospitalId.equals(request.getHospitalId())) {
+        UUID targetHospitalId = request.getHospitalId();
+
+        if (!tenantContextService.hasCurrentUserHospitalAccess(targetHospitalId)) {
             throw new AccessDeniedException(
                     "You cannot create a department for another hospital");
         }
 
         if (departmentRepo.existsByDepartmentCodeAndHospitalId(
                 request.getDepartmentCode(),
-                currentHospitalId)) {
+                targetHospitalId)) {
 
             throw new IllegalArgumentException(
                     "Department code already exists in this hospital");
         }
 
         HospitalEntity hospital =
-                hospitalService.findHospitalById(currentHospitalId);
+                hospitalService.findHospitalById(targetHospitalId);
 
         DepartmentEntity department =
                 departmentMapper.toEntity(request, hospital);
@@ -89,15 +89,7 @@ public class DepartmentServiceImpl implements DepartmentService {
                     "Department Id is required");
         }
 
-        UUID currentHospitalId = requireCurrentHospital();
-
-        DepartmentEntity department =
-                departmentRepo.findByIdAndHospitalId(
-                        id,
-                        currentHospitalId)
-                        .orElseThrow(() ->
-                                new AccessDeniedException(
-                                        "Department does not belong to your hospital"));
+        DepartmentEntity department = findDepartmentById(id);
 
         return departmentMapper.toResponse(department);
     }
@@ -105,6 +97,7 @@ public class DepartmentServiceImpl implements DepartmentService {
     @Override
     @Transactional(readOnly = true)
     public PageResponse<DepartmentResponse> getAllDepartments(
+            UUID hospitalId,
             String search,
             int page,
             int size) {
@@ -119,12 +112,31 @@ public class DepartmentServiceImpl implements DepartmentService {
                     "Page size must be greater than zero");
         }
 
-        UUID currentHospitalId = requireCurrentHospital();
+        List<UUID> hospitalIds;
+        if (hospitalId != null) {
+            if (!tenantContextService.hasCurrentUserHospitalAccess(hospitalId)) {
+                throw new AccessDeniedException(
+                        "You cannot access departments for another hospital");
+            }
+            hospitalIds = List.of(hospitalId);
+        } else {
+            hospitalIds = tenantContextService.getCurrentUserHospitalIds();
+        }
+
+        if (hospitalIds == null || hospitalIds.isEmpty()) {
+            return new PageResponse<>(
+                    List.of(),
+                    page,
+                    size,
+                    0,
+                    0,
+                    true);
+        }
 
         Page<DepartmentEntity> departmentPage =
-                departmentRepo.searchDepartmentsByHospital(
+                departmentRepo.searchDepartmentsByHospitalIds(
                         search,
-                        currentHospitalId,
+                        hospitalIds,
                         PageRequest.of(page, size));
 
         List<DepartmentResponse> content =
@@ -132,6 +144,60 @@ public class DepartmentServiceImpl implements DepartmentService {
                         .stream()
                         .map(departmentMapper::toResponse)
                         .toList();
+
+        return new PageResponse<>(
+                content,
+                departmentPage.getNumber(),
+                departmentPage.getSize(),
+                departmentPage.getTotalElements(),
+                departmentPage.getTotalPages(),
+                departmentPage.isLast());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PageResponse<DepartmentResponse> getAllDepartments(
+            String search,
+            int page,
+            int size) {
+        return getAllDepartments(null, search, page, size);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PageResponse<DepartmentResponse> getPublicDepartments(
+            UUID hospitalId,
+            String search,
+            int page,
+            int size) {
+
+        if (hospitalId == null) {
+            throw new IllegalArgumentException("Hospital ID is required");
+        }
+        if (page < 0) {
+            throw new IllegalArgumentException("Page number cannot be negative");
+        }
+        if (size <= 0) {
+            throw new IllegalArgumentException("Page size must be greater than zero");
+        }
+
+        try {
+            hospitalService.findPublicHospitalById(hospitalId);
+        } catch (Exception e) {
+            throw new AccessDeniedException(
+                    "Selected hospital is not available for public onboarding");
+        }
+
+        Page<DepartmentEntity> departmentPage =
+                departmentRepo.searchPublicDepartmentsByHospital(
+                        search,
+                        hospitalId,
+                        PageRequest.of(page, size));
+
+        List<DepartmentResponse> content = departmentPage.getContent()
+                .stream()
+                .map(departmentMapper::toResponse)
+                .toList();
 
         return new PageResponse<>(
                 content,
@@ -222,15 +288,7 @@ public class DepartmentServiceImpl implements DepartmentService {
                     "Department Id is required");
         }
 
-        UUID currentHospitalId = requireCurrentHospital();
-
-        DepartmentEntity department =
-                departmentRepo.findByIdAndHospitalId(
-                        id,
-                        currentHospitalId)
-                        .orElseThrow(() ->
-                                new AccessDeniedException(
-                                        "Department does not belong to your hospital"));
+        DepartmentEntity department = findDepartmentById(id);
 
         department.setStatus(
                 DepartmentEntity.DepartmentStatus.INACTIVE);
@@ -260,20 +318,13 @@ public class DepartmentServiceImpl implements DepartmentService {
                     "Page size must be greater than zero");
         }
 
-        UUID currentHospitalId = requireCurrentHospital();
-
-        DepartmentEntity department =
-                departmentRepo.findByIdAndHospitalId(
-                        departmentId,
-                        currentHospitalId)
-                        .orElseThrow(() ->
-                                new AccessDeniedException(
-                                        "Department does not belong to your hospital"));
+        DepartmentEntity department = findDepartmentById(departmentId);
+        UUID hospitalId = department.getHospital().getId();
 
         Page<DoctorEntity> doctorPage =
                 doctorRepo.findByDepartmentIdAndHospitalId(
                         departmentId,
-                        currentHospitalId,
+                        hospitalId,
                         PageRequest.of(page, size));
 
         List<DoctorResponse> content =
@@ -376,38 +427,32 @@ public class DepartmentServiceImpl implements DepartmentService {
                     "Department Id is required");
         }
 
-        UUID currentHospitalId = requireCurrentHospital();
-
-        departmentRepo.findByIdAndHospitalId(
-                departmentId,
-                currentHospitalId)
-                .orElseThrow(() ->
-                        new AccessDeniedException(
-                                "Department does not belong to your hospital"));
+        DepartmentEntity department = findDepartmentById(departmentId);
+        UUID hospitalId = department.getHospital().getId();
 
         return DepartmentAnalyticsResponse.builder()
 
                 .totalDoctors(
                         doctorRepo.countByDepartmentIdAndHospitalId(
                                 departmentId,
-                                currentHospitalId))
+                                hospitalId))
 
                 .activeDoctors(
                         doctorRepo.countByDepartmentIdAndHospitalIdAndStatus(
                                 departmentId,
-                                currentHospitalId,
+                                hospitalId,
                                 DoctorEntity.DoctorStatus.ACTIVE))
 
                 .inactiveDoctors(
                         doctorRepo.countByDepartmentIdAndHospitalIdAndStatus(
                                 departmentId,
-                                currentHospitalId,
+                                hospitalId,
                                 DoctorEntity.DoctorStatus.INACTIVE))
 
                 .suspendedDoctors(
                         doctorRepo.countByDepartmentIdAndHospitalIdAndStatus(
                                 departmentId,
-                                currentHospitalId,
+                                hospitalId,
                                 DoctorEntity.DoctorStatus.SUSPENDED))
 
                 .build();
@@ -422,14 +467,18 @@ public class DepartmentServiceImpl implements DepartmentService {
                     "Department Id is required");
         }
 
-        UUID currentHospitalId = requireCurrentHospital();
-
-        return departmentRepo.findByIdAndHospitalId(
-                departmentId,
-                currentHospitalId)
+        DepartmentEntity department = departmentRepo.findById(departmentId)
                 .orElseThrow(() ->
-                        new AccessDeniedException(
-                                "Department does not belong to your hospital"));
+                        new IllegalArgumentException(
+                                "Department not found"));
+
+        if (department.getHospital() == null
+                || !tenantContextService.hasCurrentUserHospitalAccess(department.getHospital().getId())) {
+            throw new AccessDeniedException(
+                    "Department does not belong to your hospital");
+        }
+
+        return department;
     }
 
     private UUID requireCurrentHospital() {

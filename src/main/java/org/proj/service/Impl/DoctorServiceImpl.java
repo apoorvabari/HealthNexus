@@ -12,6 +12,8 @@ import org.proj.mapper.DoctorMapper;
 import org.proj.repository.DoctorRepo;
 import org.proj.security.SecurityUtils;
 import org.proj.service.DepartmentService;
+import org.proj.repository.DepartmentRepo;
+import org.proj.repository.HospitalRepo;
 import org.proj.service.DoctorService;
 import org.proj.service.HospitalService;
 import org.proj.service.TenantContextService;
@@ -23,6 +25,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
@@ -30,816 +33,923 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class DoctorServiceImpl implements DoctorService {
 
-    private final DoctorRepo doctorRepo;
-    private final UserService userService;
-    private final HospitalService hospitalService;
-    private final DepartmentService departmentService;
-    private final DoctorMapper doctorMapper;
-    private final TenantContextService tenantContextService;
+        private final DoctorRepo doctorRepo;
+        private final UserService userService;
+        private final HospitalRepo hospitalRepo;
+        private final DepartmentRepo departmentRepo;
+        private final HospitalService hospitalService;
+        private final DepartmentService departmentService;
+        private final DoctorMapper doctorMapper;
+        private final TenantContextService tenantContextService;
 
-    @Override
-    @Transactional
-    public DoctorResponse createDoctor(DoctorRequest request) {
-        try {
-            if (request == null) {
-                throw new IllegalArgumentException("Doctor request is required");
-            }
+        @Override
+        @Transactional
+        public DoctorResponse createDoctor(DoctorRequest request) {
 
-            UserEntity currentUser = requireCurrentUser();
-            String role = getRole(currentUser);
+                try {
+                        if (request == null) {
+                                throw new IllegalArgumentException(
+                                                "Doctor request is required");
+                        }
 
-            if (!"ADMIN".equals(role) && !"DOCTOR".equals(role)) {
-                throw new AccessDeniedException(
-                        "You are not authorized to create a doctor profile");
-            }
+                        UserEntity currentUser = requireCurrentUser();
 
-            UUID currentHospitalId = requireCurrentHospital();
+                        String currentRole = getRole(currentUser);
 
-            if (request.getHospitalId() == null) {
-                throw new IllegalArgumentException("Hospital ID is required");
-            }
+                        if (!"ADMIN".equals(currentRole)
+                                        && !"DOCTOR".equals(currentRole)) {
 
-            if (!currentHospitalId.equals(request.getHospitalId())) {
-                throw new AccessDeniedException(
-                        "You cannot create a doctor for another hospital");
-            }
+                                throw new AccessDeniedException(
+                                                "You are not authorized to create a doctor profile");
+                        }
 
-            if (request.getAccountId() == null) {
-                throw new IllegalArgumentException("Account ID is required");
-            }
+                        if (request.getAccountId() == null) {
+                                throw new IllegalArgumentException(
+                                                "Account ID is required");
+                        }
 
-            if ("DOCTOR".equals(role)
-                    && !currentUser.getId().equals(request.getAccountId())) {
+                        if (request.getHospitalId() == null) {
+                                throw new IllegalArgumentException(
+                                                "Hospital ID is required");
+                        }
 
-                throw new AccessDeniedException(
-                        "Doctors can create only their own doctor profile");
-            }
+                        if (request.getDepartmentId() == null) {
+                                throw new IllegalArgumentException(
+                                                "Department ID is required");
+                        }
 
-            UserEntity account =
-                    userService.findUserById(request.getAccountId());
+                        /*
+                         * ==========================================================
+                         * ACCOUNT OWNERSHIP
+                         * ==========================================================
+                         *
+                         * A doctor creating their own first profile can only create
+                         * a profile for their authenticated account.
+                         */
+                        if ("DOCTOR".equals(currentRole)
+                                        && !currentUser.getId()
+                                                        .equals(request.getAccountId())) {
 
-            if (account == null
-                    || account.getRole() == null
-                    || !"DOCTOR".equalsIgnoreCase(
-                    account.getRole().getRoleName())) {
+                                throw new AccessDeniedException(
+                                                "Doctors can create only their own doctor profile");
+                        }
 
-                throw new IllegalArgumentException(
-                        "Account is not assigned DOCTOR role.");
-            }
+                        /*
+                         * ==========================================================
+                         * LOAD ACCOUNT
+                         * ==========================================================
+                         */
+                        UserEntity account = userService.findUserById(
+                                        request.getAccountId());
 
-            if (doctorRepo.existsByAccountId(request.getAccountId())) {
-                throw new IllegalArgumentException(
-                        "Doctor profile already exists for this account");
-            }
+                        if (account == null
+                                        || account.getRole() == null) {
 
-            HospitalEntity hospital =
-                    hospitalService.findHospitalById(currentHospitalId);
+                                throw new IllegalArgumentException(
+                                                "Account or account role is invalid");
+                        }
 
-            if (hospital == null) {
-                throw new IllegalArgumentException("Hospital not found");
-            }
+                        String accountRole = getRole(account);
 
-            if (request.getDepartmentId() == null) {
-                throw new IllegalArgumentException(
-                        "Department ID is required");
-            }
+                        if (!"DOCTOR".equals(accountRole)) {
 
-            DepartmentEntity department =
-                    departmentService.findDepartmentById(
-                            request.getDepartmentId());
+                                throw new IllegalArgumentException(
+                                                "Account is not assigned DOCTOR role");
+                        }
 
-            validateDepartmentHospital(
-                    department,
-                    currentHospitalId);
+                        /*
+                         * ==========================================================
+                         * DUPLICATE PROFILE CHECK
+                         * ==========================================================
+                         */
+                        if (doctorRepo.existsByAccountId(
+                                        request.getAccountId())) {
 
-            if (request.getLicenseNumber() == null
-                    || request.getLicenseNumber().isBlank()) {
+                                throw new IllegalArgumentException(
+                                                "Doctor profile already exists for this account");
+                        }
 
-                throw new IllegalArgumentException(
-                        "License number is required");
-            }
+                        /*
+                         * ==========================================================
+                         * HOSPITAL VALIDATION
+                         * ==========================================================
+                         *
+                         * FIRST-TIME DOCTOR:
+                         * The DoctorEntity does not exist yet, therefore we cannot
+                         * resolve the tenant from DoctorRepo.
+                         *
+                         * Allow onboarding only into a PUBLIC hospital:
+                         * ACTIVE + APPROVED.
+                         *
+                         * ADMIN:
+                         * Must use their currently selected authorized hospital.
+                         */
+                        HospitalEntity hospital;
 
-            if (doctorRepo.existsByLicenseNumber(
-                    request.getLicenseNumber())) {
+                        if ("DOCTOR".equals(currentRole)) {
 
-                throw new IllegalArgumentException(
-                        "Doctor with this license number already exists");
-            }
+                                hospital = hospitalRepo
+                                                .findPublicHospitalById(
+                                                                request.getHospitalId())
+                                                .orElseThrow(() -> new AccessDeniedException(
+                                                                "Selected hospital is not available for doctor onboarding"));
 
-            DoctorEntity doctor =
-                    doctorMapper.toEntity(
-                            request,
-                            account,
-                            hospital,
-                            department);
+                        } else {
 
-            DoctorEntity savedDoctor =
-                    doctorRepo.save(doctor);
+                                UUID currentHospitalId = requireCurrentHospital();
 
-            DoctorResponse response =
-                    doctorMapper.toResponse(savedDoctor);
+                                if (!currentHospitalId.equals(
+                                                request.getHospitalId())) {
 
-            response.setMessage(
-                    "Doctor profile created successfully");
+                                        throw new AccessDeniedException(
+                                                        "You cannot create a doctor for another hospital");
+                                }
 
-            return response;
+                                hospital = hospitalService.findHospitalById(
+                                                request.getHospitalId());
+                        }
 
-        } catch (AccessDeniedException
-                 | IllegalArgumentException e) {
+                        /*
+                         * ==========================================================
+                         * DEPARTMENT VALIDATION
+                         * ==========================================================
+                         *
+                         * Do NOT call:
+                         *
+                         * departmentService.findDepartmentById(...)
+                         *
+                         * for first-time doctor onboarding because that method
+                         * requires an already-established tenant.
+                         *
+                         * Instead verify directly that the department belongs
+                         * to the selected hospital.
+                         */
+                        DepartmentEntity department = departmentRepo
+                                        .findByIdAndHospitalId(
+                                                        request.getDepartmentId(),
+                                                        request.getHospitalId())
+                                        .orElseThrow(() -> new AccessDeniedException(
+                                                        "Selected department does not belong to the selected hospital"));
 
-            throw e;
+                        /*
+                         * ==========================================================
+                         * DOCTOR DETAILS VALIDATION
+                         * ==========================================================
+                         */
+                        if (request.getLicenseNumber() == null
+                                        || request.getLicenseNumber().isBlank()) {
 
-        } catch (Exception e) {
+                                throw new IllegalArgumentException(
+                                                "License number is required");
+                        }
 
-            throw new RuntimeException(
-                    "Unable to create doctor profile.",
-                    e);
+                        if (doctorRepo.existsByLicenseNumber(
+                                        request.getLicenseNumber())) {
+
+                                throw new IllegalArgumentException(
+                                                "Doctor with this license number already exists");
+                        }
+
+                        /*
+                         * ==========================================================
+                         * CREATE DOCTOR
+                         * ==========================================================
+                         */
+                        DoctorEntity doctor = doctorMapper.toEntity(
+                                        request,
+                                        account,
+                                        hospital,
+                                        department);
+
+                        DoctorEntity savedDoctor = doctorRepo.save(doctor);
+
+                        DoctorResponse response = doctorMapper.toResponse(savedDoctor);
+
+                        response.setMessage(
+                                        "Doctor profile created successfully");
+
+                        return response;
+
+                } catch (AccessDeniedException
+                                | IllegalArgumentException e) {
+
+                        throw e;
+
+                } catch (Exception e) {
+
+                        throw new RuntimeException(
+                                        "Unable to create doctor profile.",
+                                        e);
+                }
         }
-    }
 
-    @Override
-    @Transactional(readOnly = true)
-    public PageResponse<DoctorResponse> searchDoctorsForPatient(
-            String search,
-            String specialization,
-            UUID hospitalId,
-            UUID departmentId,
-            BigDecimal maxFee,
-            Integer minExperience,
-            int page,
-            int size) {
+        @Override
+        @Transactional(readOnly = true)
+        public PageResponse<DoctorResponse> searchDoctorsForPatient(
+                        String search,
+                        String specialization,
+                        UUID hospitalId,
+                        UUID departmentId,
+                        BigDecimal maxFee,
+                        Integer minExperience,
+                        int page,
+                        int size) {
 
-        try {
+                try {
 
-            if (page < 0) {
-                throw new IllegalArgumentException(
-                        "Page cannot be negative");
-            }
+                        if (page < 0) {
+                                throw new IllegalArgumentException(
+                                                "Page cannot be negative");
+                        }
 
-            if (size < 1 || size > 50) {
-                throw new IllegalArgumentException(
-                        "Page size must be between 1 and 50");
-            }
+                        if (size < 1 || size > 50) {
+                                throw new IllegalArgumentException(
+                                                "Page size must be between 1 and 50");
+                        }
 
-            if (maxFee != null
-                    && maxFee.compareTo(BigDecimal.ZERO) < 0) {
+                        if (maxFee != null
+                                        && maxFee.compareTo(BigDecimal.ZERO) < 0) {
 
-                throw new IllegalArgumentException(
-                        "Maximum fee cannot be negative");
-            }
+                                throw new IllegalArgumentException(
+                                                "Maximum fee cannot be negative");
+                        }
 
-            if (minExperience != null
-                    && minExperience < 0) {
+                        if (minExperience != null
+                                        && minExperience < 0) {
 
-                throw new IllegalArgumentException(
-                        "Minimum experience cannot be negative");
-            }
+                                throw new IllegalArgumentException(
+                                                "Minimum experience cannot be negative");
+                        }
 
-            UUID currentHospitalId =
-                    requireCurrentHospital();
+                        UUID currentHospitalId = tenantContextService.getCurrentUserHospitalId();
+                        UUID targetHospitalId = (hospitalId != null) ? hospitalId : currentHospitalId;
 
-            Page<DoctorEntity> doctorPage =
-                    doctorRepo.searchDoctorsForPatient(
-                            search,
-                            specialization,
-                            currentHospitalId,
-                            departmentId,
-                            maxFee,
-                            minExperience,
-                            PageRequest.of(page, size));
+                        Page<DoctorEntity> doctorPage = doctorRepo.searchDoctorsForPatient(
+                                        search,
+                                        specialization,
+                                        targetHospitalId,
+                                        departmentId,
+                                        maxFee,
+                                        minExperience,
+                                        PageRequest.of(page, size));
 
-            List<DoctorResponse> content =
-                    doctorPage.getContent()
-                            .stream()
-                            .map(doctorMapper::toResponse)
-                            .toList();
+                        List<DoctorResponse> content = doctorPage.getContent()
+                                        .stream()
+                                        .map(doctorMapper::toResponse)
+                                        .toList();
 
-            return new PageResponse<>(
-                    content,
-                    doctorPage.getNumber(),
-                    doctorPage.getSize(),
-                    doctorPage.getTotalElements(),
-                    doctorPage.getTotalPages(),
-                    doctorPage.isLast());
+                        return new PageResponse<>(
+                                        content,
+                                        doctorPage.getNumber(),
+                                        doctorPage.getSize(),
+                                        doctorPage.getTotalElements(),
+                                        doctorPage.getTotalPages(),
+                                        doctorPage.isLast());
 
-        } catch (IllegalArgumentException e) {
+                } catch (AccessDeniedException e) {
 
-            throw e;
+                        throw e;
 
-        } catch (Exception e) {
+                } catch (IllegalArgumentException e) {
 
-            throw new RuntimeException(
-                    "Unable to search doctors.",
-                    e);
+                        throw e;
+
+                } catch (Exception e) {
+
+                        throw new RuntimeException(
+                                        "Unable to search doctors.",
+                                        e);
+                }
         }
-    }
 
-    @Override
-    @Transactional(readOnly = true)
-    public PageResponse<DoctorResponse> getNearbyDoctors(
-            double latitude,
-            double longitude,
-            double radiusKm,
-            String specialization,
-            BigDecimal maxFee,
-            Integer minExperience,
-            int page,
-            int size) {
-        try {
-            if (page < 0) {
-                throw new IllegalArgumentException("Page cannot be negative");
-            }
-            if (size < 1 || size > 50) {
-                throw new IllegalArgumentException("Page size must be between 1 and 50");
-            }
-            if (radiusKm <= 0) {
-                throw new IllegalArgumentException("Radius must be greater than zero");
-            }
+        @Override
+        @Transactional(readOnly = true)
+        public PageResponse<DoctorResponse> getNearbyDoctors(
+                        double latitude,
+                        double longitude,
+                        double radiusKm,
+                        String specialization,
+                        BigDecimal maxFee,
+                        Integer minExperience,
+                        int page,
+                        int size) {
+                try {
+                        if (page < 0) {
+                                throw new IllegalArgumentException("Page cannot be negative");
+                        }
+                        if (size < 1 || size > 50) {
+                                throw new IllegalArgumentException("Page size must be between 1 and 50");
+                        }
+                        if (radiusKm <= 0) {
+                                throw new IllegalArgumentException("Radius must be greater than zero");
+                        }
 
-            UUID currentHospitalId = requireCurrentHospital();
-            HospitalEntity hospital = hospitalService.findHospitalById(currentHospitalId);
+                        // 1. Fetch all approved active doctors across all public hospitals (no
+                        // single-tenant restriction)
+                        List<DoctorEntity> allApprovedDoctors = doctorRepo.searchDoctorsForPatient(
+                                        null,
+                                        specialization,
+                                        null,
+                                        null,
+                                        maxFee,
+                                        minExperience,
+                                        PageRequest.of(0, 1000)).getContent();
 
-            if (hospital == null || hospital.getLatitude() == null || hospital.getLongitude() == null) {
-                return new PageResponse<>(List.of(), page, size, 0, 0, true);
-            }
+                        // 2. Compute individual per-doctor distance based on their respective hospital
+                        // coordinates
+                        record DoctorDistancePair(DoctorEntity doctor, double distanceKm) {
+                        }
 
-            double distance = calculateHaversineDistanceKm(
-                    latitude, longitude,
-                    hospital.getLatitude(), hospital.getLongitude()
-            );
+                        List<DoctorDistancePair> nearbyPairs = allApprovedDoctors.stream()
+                                        .filter(doc -> doc.getHospital() != null
+                                                        && doc.getHospital().getLatitude() != null
+                                                        && doc.getHospital().getLongitude() != null)
+                                        .map(doc -> {
+                                                double dist = calculateHaversineDistanceKm(
+                                                                latitude, longitude,
+                                                                doc.getHospital().getLatitude(),
+                                                                doc.getHospital().getLongitude());
+                                                return new DoctorDistancePair(doc, dist);
+                                        })
+                                        .filter(pair -> pair.distanceKm() <= radiusKm)
+                                        .sorted(Comparator.comparingDouble(DoctorDistancePair::distanceKm))
+                                        .toList();
 
-            if (distance > radiusKm) {
-                return new PageResponse<>(List.of(), page, size, 0, 0, true);
-            }
+                        // 3. Paginate the filtered nearby doctor pairs
+                        int total = nearbyPairs.size();
+                        int fromIndex = Math.min(page * size, total);
+                        int toIndex = Math.min(fromIndex + size, total);
+                        List<DoctorDistancePair> pageSublist = nearbyPairs.subList(fromIndex, toIndex);
 
-            Page<DoctorEntity> doctorPage = doctorRepo.searchDoctorsForPatient(
-                    null,
-                    specialization,
-                    currentHospitalId,
-                    null,
-                    maxFee,
-                    minExperience,
-                    PageRequest.of(page, size)
-            );
+                        List<DoctorResponse> content = pageSublist.stream()
+                                        .map(pair -> {
+                                                DoctorResponse resp = doctorMapper.toResponse(pair.doctor());
+                                                resp.setDistanceKm(Math.round(pair.distanceKm() * 100.0) / 100.0);
+                                                return resp;
+                                        })
+                                        .toList();
 
-            List<DoctorResponse> content = doctorPage.getContent()
-                    .stream()
-                    .map(doctor -> {
-                        DoctorResponse resp = doctorMapper.toResponse(doctor);
-                        resp.setDistanceKm(Math.round(distance * 100.0) / 100.0);
-                        return resp;
-                    })
-                    .toList();
+                        int totalPages = (int) Math.ceil((double) total / size);
+                        boolean isLast = (page + 1) >= totalPages || totalPages == 0;
 
-            return new PageResponse<>(
-                    content,
-                    doctorPage.getNumber(),
-                    doctorPage.getSize(),
-                    doctorPage.getTotalElements(),
-                    doctorPage.getTotalPages(),
-                    doctorPage.isLast()
-            );
-        } catch (IllegalArgumentException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new RuntimeException("Unable to search nearby doctors.", e);
+                        return new PageResponse<>(
+                                        content,
+                                        page,
+                                        size,
+                                        total,
+                                        totalPages,
+                                        isLast);
+                } catch (IllegalArgumentException e) {
+                        throw e;
+                } catch (Exception e) {
+                        throw new RuntimeException("Unable to search nearby doctors.", e);
+                }
         }
-    }
 
-    private double calculateHaversineDistanceKm(double lat1, double lon1, double lat2, double lon2) {
-        final int EARTH_RADIUS_KM = 6371;
-        double dLat = Math.toRadians(lat2 - lat1);
-        double dLon = Math.toRadians(lon2 - lon1);
-        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
-                + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
-                * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-        double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        return EARTH_RADIUS_KM * c;
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public DoctorResponse getDoctorById(UUID id) {
-
-        try {
-
-            if (id == null) {
-                throw new IllegalArgumentException(
-                        "Doctor Id is required");
-            }
-
-            requireCurrentUser();
-
-            UUID currentHospitalId =
-                    requireCurrentHospital();
-
-            DoctorEntity doctor =
-                    doctorRepo.findByIdAndHospitalId(
-                            id,
-                            currentHospitalId)
-                            .orElseThrow(() ->
-                                    new AccessDeniedException(
-                                            "You are not authorized to view a doctor from another hospital"));
-
-            return doctorMapper.toResponse(doctor);
-
-        } catch (AccessDeniedException
-                 | IllegalArgumentException e) {
-
-            throw e;
-
-        } catch (Exception e) {
-
-            throw new RuntimeException(
-                    "Unable to fetch doctor profile.",
-                    e);
+        private double calculateHaversineDistanceKm(double lat1, double lon1, double lat2, double lon2) {
+                final int EARTH_RADIUS_KM = 6371;
+                double dLat = Math.toRadians(lat2 - lat1);
+                double dLon = Math.toRadians(lon2 - lon1);
+                double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+                                + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
+                                                * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+                double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                return EARTH_RADIUS_KM * c;
         }
-    }
 
-    @Override
-    @Transactional(readOnly = true)
-    public PageResponse<DoctorResponse> getAllDoctors(
-            String search,
-            int page,
-            int size,
-            boolean isAdmin) {
+        @Override
+        @Transactional(readOnly = true)
+        public DoctorResponse getDoctorById(UUID id) {
 
-        try {
+                try {
 
-            if (page < 0) {
-                throw new IllegalArgumentException(
-                        "Page number cannot be negative");
-            }
+                        if (id == null) {
+                                throw new IllegalArgumentException(
+                                                "Doctor Id is required");
+                        }
 
-            if (size < 1 || size > 50) {
-                throw new IllegalArgumentException(
-                        "Page size must be between 1 and 50");
-            }
+                        UserEntity currentUser = requireCurrentUser();
+                        String roleName = currentUser.getRole() != null ? currentUser.getRole().getRoleName() : "";
 
-            UUID hospitalId =
-                    tenantContextService.getCurrentUserHospitalId();
+                        DoctorEntity doctor;
+                        if ("PATIENT".equalsIgnoreCase(roleName)) {
+                                doctor = doctorRepo.findById(id)
+                                                .orElseThrow(() -> new IllegalArgumentException(
+                                                                "Doctor not found with id: " + id));
+                        } else {
+                                UUID currentHospitalId = requireCurrentHospital();
+                                doctor = doctorRepo.findByIdAndHospitalId(
+                                                id,
+                                                currentHospitalId)
+                                                .orElseThrow(() -> new AccessDeniedException(
+                                                                "You are not authorized to view a doctor from another hospital"));
+                        }
 
-            if (hospitalId == null) {
-                throw new AccessDeniedException(
-                        "Tenant hospital context is required to list doctors");
-            }
+                        return doctorMapper.toResponse(doctor);
 
-            Page<DoctorEntity> doctorPage;
+                } catch (AccessDeniedException
+                                | IllegalArgumentException e) {
 
-            if (isAdmin) {
+                        throw e;
 
-                doctorPage =
-                        doctorRepo.searchDoctorsByHospital(
-                                search,
-                                hospitalId,
+                } catch (Exception e) {
+
+                        throw new RuntimeException(
+                                        "Unable to fetch doctor profile.",
+                                        e);
+                }
+        }
+
+        @Override
+        @Transactional(readOnly = true)
+        public PageResponse<DoctorResponse> getAllDoctors(
+                        String search,
+                        int page,
+                        int size,
+                        boolean isAdmin) {
+
+                try {
+
+                        if (page < 0) {
+                                throw new IllegalArgumentException(
+                                                "Page number cannot be negative");
+                        }
+
+                        if (size < 1 || size > 50) {
+                                throw new IllegalArgumentException(
+                                                "Page size must be between 1 and 50");
+                        }
+
+                        UUID hospitalId = tenantContextService.getCurrentUserHospitalId();
+
+                        if (hospitalId == null) {
+                                throw new AccessDeniedException(
+                                                "Tenant hospital context is required to list doctors");
+                        }
+
+                        Page<DoctorEntity> doctorPage;
+
+                        if (isAdmin) {
+
+                                doctorPage = doctorRepo.searchDoctorsByHospital(
+                                                search,
+                                                hospitalId,
+                                                PageRequest.of(page, size));
+
+                        } else {
+
+                                doctorPage = doctorRepo.searchApprovedAndActiveDoctorsByHospital(
+                                                search,
+                                                hospitalId,
+                                                PageRequest.of(page, size));
+                        }
+
+                        List<DoctorResponse> content = doctorPage.getContent()
+                                        .stream()
+                                        .map(doctorMapper::toResponse)
+                                        .toList();
+
+                        return new PageResponse<>(
+                                        content,
+                                        doctorPage.getNumber(),
+                                        doctorPage.getSize(),
+                                        doctorPage.getTotalElements(),
+                                        doctorPage.getTotalPages(),
+                                        doctorPage.isLast());
+
+                } catch (AccessDeniedException
+                                | IllegalArgumentException e) {
+
+                        throw e;
+
+                } catch (Exception e) {
+
+                        throw new RuntimeException(
+                                        "Unable to fetch doctor list.",
+                                        e);
+                }
+        }
+
+        @Override
+        @Transactional
+        public DoctorResponse updateDoctor(
+                        UUID id,
+                        DoctorRequest request) {
+
+                try {
+
+                        if (id == null) {
+                                throw new IllegalArgumentException(
+                                                "Doctor Id is required");
+                        }
+
+                        if (request == null) {
+                                throw new IllegalArgumentException(
+                                                "Doctor request is required");
+                        }
+
+                        UserEntity currentUser = requireCurrentUser();
+
+                        String role = getRole(currentUser);
+
+                        if (!"ADMIN".equals(role)
+                                        && !"DOCTOR".equals(role)) {
+
+                                throw new AccessDeniedException(
+                                                "You are not authorized to update a doctor profile");
+                        }
+
+                        UUID currentHospitalId = tenantContextService.getCurrentUserHospitalId();
+
+                        DoctorEntity doctor;
+                        if ("ADMIN".equals(role)) {
+                                if (currentHospitalId == null) {
+                                        throw new AccessDeniedException("Hospital context is required");
+                                }
+                                doctor = doctorRepo.findByIdAndHospitalId(id, currentHospitalId)
+                                                .orElseThrow(() -> new AccessDeniedException(
+                                                                "You are not authorized to update a doctor from another hospital"));
+                        } else {
+                                doctor = doctorRepo.findById(id)
+                                                .orElseThrow(() -> new IllegalArgumentException(
+                                                                "Doctor profile not found"));
+
+                                if (doctor.getAccount() == null
+                                                || !doctor.getAccount().getId().equals(currentUser.getId())) {
+                                        throw new AccessDeniedException(
+                                                        "You are not authorized to update another doctor's profile");
+                                }
+                        }
+
+                        if (request.getHospitalId() != null
+                                        && doctor.getHospital() != null
+                                        && !doctor.getHospital().getId().equals(request.getHospitalId())) {
+
+                                throw new AccessDeniedException(
+                                                "Doctor hospital cannot be changed");
+                        }
+
+                        UserEntity account = doctor.getAccount();
+
+                        if (account == null) {
+                                throw new IllegalArgumentException(
+                                                "Doctor account is not configured");
+                        }
+
+                        if (request.getAccountId() != null
+                                        && !request.getAccountId()
+                                                        .equals(account.getId())) {
+
+                                if ("DOCTOR".equals(role)) {
+
+                                        throw new AccessDeniedException(
+                                                        "Doctors cannot change doctor account ownership");
+                                }
+
+                                UserEntity replacementAccount = userService.findUserById(
+                                                request.getAccountId());
+
+                                if (replacementAccount == null
+                                                || replacementAccount.getRole() == null
+                                                || !"DOCTOR".equalsIgnoreCase(
+                                                                replacementAccount
+                                                                                .getRole()
+                                                                                .getRoleName())) {
+
+                                        throw new IllegalArgumentException(
+                                                        "Account is not assigned DOCTOR role.");
+                                }
+
+                                if (doctorRepo.existsByAccountIdAndIdNot(
+                                                request.getAccountId(),
+                                                id)) {
+
+                                        throw new IllegalArgumentException(
+                                                        "Doctor profile already exists for this account");
+                                }
+
+                                account = replacementAccount;
+                        }
+
+                        HospitalEntity hospital = doctor.getHospital();
+
+                        if (hospital == null
+                                        || !currentHospitalId.equals(
+                                                        hospital.getId())) {
+
+                                throw new AccessDeniedException(
+                                                "Doctor does not belong to the current hospital");
+                        }
+
+                        DepartmentEntity department = doctor.getDepartment();
+
+                        if (department == null) {
+
+                                throw new IllegalArgumentException(
+                                                "Doctor department is not configured");
+                        }
+
+                        if (request.getDepartmentId() != null
+                                        && !request.getDepartmentId()
+                                                        .equals(department.getId())) {
+
+                                department = departmentService.findDepartmentById(
+                                                request.getDepartmentId());
+
+                                validateDepartmentHospital(
+                                                department,
+                                                currentHospitalId);
+                        }
+
+                        if (request.getLicenseNumber() != null
+                                        && !request.getLicenseNumber()
+                                                        .equals(doctor.getLicenseNumber())
+                                        && doctorRepo.existsByLicenseNumberAndIdNot(
+                                                        request.getLicenseNumber(),
+                                                        id)) {
+
+                                throw new IllegalArgumentException(
+                                                "Doctor with this license number already exists");
+                        }
+
+                        doctorMapper.updateEntity(
+                                        doctor,
+                                        request,
+                                        account,
+                                        hospital,
+                                        department);
+
+                        DoctorEntity updatedDoctor = doctorRepo.save(doctor);
+
+                        DoctorResponse response = doctorMapper.toResponse(updatedDoctor);
+
+                        response.setMessage(
+                                        "Doctor profile updated successfully");
+
+                        return response;
+
+                } catch (AccessDeniedException
+                                | IllegalArgumentException e) {
+
+                        throw e;
+
+                } catch (Exception e) {
+
+                        throw new RuntimeException(
+                                        "Unable to update doctor profile.",
+                                        e);
+                }
+        }
+
+        @Override
+        @Transactional
+        public void deleteDoctor(UUID id) {
+
+                try {
+
+                        if (id == null) {
+                                throw new IllegalArgumentException(
+                                                "Doctor Id is required");
+                        }
+
+                        UUID currentHospitalId = requireCurrentHospital();
+
+                        DoctorEntity doctor = doctorRepo.findByIdAndHospitalId(
+                                        id,
+                                        currentHospitalId)
+                                        .orElseThrow(() -> new AccessDeniedException(
+                                                        "You are not authorized to delete a doctor from another hospital"));
+
+                        doctor.setStatus(
+                                        DoctorEntity.DoctorStatus.INACTIVE);
+
+                        doctorRepo.save(doctor);
+
+                } catch (AccessDeniedException
+                                | IllegalArgumentException e) {
+
+                        throw e;
+
+                } catch (Exception e) {
+
+                        throw new RuntimeException(
+                                        "Unable to delete doctor profile.",
+                                        e);
+                }
+        }
+
+        @Override
+        @Transactional(readOnly = true)
+        public DoctorEntity findDoctorById(UUID doctorId) {
+
+                if (doctorId == null) {
+                        throw new IllegalArgumentException(
+                                        "Doctor Id is required");
+                }
+
+                return doctorRepo.findById(doctorId)
+                                .orElseThrow(() -> new IllegalArgumentException(
+                                                "Doctor not found"));
+        }
+
+        @Override
+        @Transactional(readOnly = true)
+        public DoctorEntity findDoctorByIdAndHospitalId(UUID doctorId, UUID hospitalId) {
+
+                if (doctorId == null) {
+                        throw new IllegalArgumentException(
+                                        "Doctor Id is required");
+                }
+
+                if (hospitalId == null) {
+                        throw new IllegalArgumentException(
+                                        "Hospital Id is required");
+                }
+
+                return doctorRepo.findByIdAndHospitalId(doctorId, hospitalId)
+                                .orElseThrow(() -> new IllegalArgumentException(
+                                                "Doctor not found for this hospital"));
+        }
+
+        @Override
+        @Transactional(readOnly = true)
+        public DoctorResponse getDoctorByAccountId(
+                        UUID accountId) {
+
+                if (accountId == null) {
+                        throw new IllegalArgumentException(
+                                        "Account Id is required");
+                }
+
+                UserEntity currentUser = requireCurrentUser();
+                String currentRole = getRole(currentUser);
+
+                // A newly registered doctor does not have a DoctorEntity yet.
+                // The old implementation tried to resolve the hospital before
+                // checking the doctor profile, which caused a 403 instead of the
+                // expected 404 and prevented the profile-completion flow.
+                // For a doctor requesting their own account, the account ID itself
+                // establishes ownership; no hospital context is required until a
+                // profile exists.
+                if ("DOCTOR".equals(currentRole)
+                                && currentUser.getId().equals(accountId)) {
+
+                        DoctorEntity ownDoctor = doctorRepo.findByAccountId(accountId)
+                                        .orElseThrow(() -> new IllegalArgumentException(
+                                                        "Doctor profile not found for this account"));
+
+                        if (ownDoctor.getHospital() == null
+                                        || ownDoctor.getHospital().getId() == null) {
+
+                                throw new AccessDeniedException(
+                                                "Doctor profile has no hospital assigned");
+                        }
+
+                        return doctorMapper.toResponse(ownDoctor);
+                }
+
+                UUID currentHospitalId = requireCurrentHospital();
+
+                DoctorEntity doctor = doctorRepo.findByAccountId(accountId)
+                                .orElseThrow(() -> new IllegalArgumentException(
+                                                "Doctor profile not found for this account"));
+
+                if (doctor.getHospital() == null
+                                || !currentHospitalId.equals(
+                                                doctor.getHospital().getId())) {
+
+                        throw new AccessDeniedException(
+                                        "You are not authorized to view a doctor from another hospital");
+                }
+
+                return doctorMapper.toResponse(doctor);
+        }
+
+        @Override
+        @Transactional(readOnly = true)
+        public java.util.Optional<DoctorEntity> findDoctorEntityByAccountId(UUID accountId) {
+
+                return doctorRepo.findByAccountId(accountId);
+        }
+
+        @Override
+        @Transactional(readOnly = true)
+        public java.util.Optional<DoctorEntity> findDoctorByAccountUsername(String username) {
+
+                return doctorRepo.findByAccountEmail(username);
+        }
+
+        @Override
+        public void save(DoctorEntity doctor) {
+                doctorRepo.save(doctor);
+        }
+
+        @Override
+        public long count() {
+                return doctorRepo.count();
+        }
+
+        @Override
+        public long countByVerificationStatus(
+                        DoctorEntity.VerificationStatus verificationStatus) {
+
+                return doctorRepo.countByVerificationStatus(
+                                verificationStatus);
+        }
+
+        @Override
+        @Transactional(readOnly = true)
+        public Page<DoctorEntity> getDoctorsByDepartment(
+                        UUID departmentId,
+                        int page,
+                        int size) {
+
+                return doctorRepo.findByDepartmentId(
+                                departmentId,
                                 PageRequest.of(page, size));
-
-            } else {
-
-                doctorPage =
-                        doctorRepo.searchApprovedAndActiveDoctorsByHospital(
-                                search,
-                                hospitalId,
-                                PageRequest.of(page, size));
-            }
-
-            List<DoctorResponse> content =
-                    doctorPage.getContent()
-                            .stream()
-                            .map(doctorMapper::toResponse)
-                            .toList();
-
-            return new PageResponse<>(
-                    content,
-                    doctorPage.getNumber(),
-                    doctorPage.getSize(),
-                    doctorPage.getTotalElements(),
-                    doctorPage.getTotalPages(),
-                    doctorPage.isLast());
-
-        } catch (AccessDeniedException
-                 | IllegalArgumentException e) {
-
-            throw e;
-
-        } catch (Exception e) {
-
-            throw new RuntimeException(
-                    "Unable to fetch doctor list.",
-                    e);
         }
-    }
 
-    @Override
-    @Transactional
-    public DoctorResponse updateDoctor(
-            UUID id,
-            DoctorRequest request) {
+        @Override
+        @Transactional(readOnly = true)
+        public long countDoctorsByDepartment(
+                        UUID departmentId) {
 
-        try {
+                return doctorRepo.countByDepartmentId(
+                                departmentId);
+        }
 
-            if (id == null) {
-                throw new IllegalArgumentException(
-                        "Doctor Id is required");
-            }
+        @Override
+        @Transactional(readOnly = true)
+        public long countDoctorsByDepartmentAndStatus(
+                        UUID departmentId,
+                        DoctorEntity.DoctorStatus status) {
 
-            if (request == null) {
-                throw new IllegalArgumentException(
-                        "Doctor request is required");
-            }
+                return doctorRepo.countByDepartmentIdAndStatus(
+                                departmentId,
+                                status);
+        }
 
-            UserEntity currentUser =
-                    requireCurrentUser();
+        private UserEntity requireCurrentUser() {
 
-            String role =
-                    getRole(currentUser);
+                UserEntity currentUser = SecurityUtils.getCurrentUser();
 
-            if (!"ADMIN".equals(role)
-                    && !"DOCTOR".equals(role)) {
+                if (currentUser == null
+                                || currentUser.getId() == null) {
 
-                throw new AccessDeniedException(
-                        "You are not authorized to update a doctor profile");
-            }
-
-            UUID currentHospitalId =
-                    requireCurrentHospital();
-
-            DoctorEntity doctor =
-                    doctorRepo.findByIdAndHospitalId(
-                            id,
-                            currentHospitalId)
-                            .orElseThrow(() ->
-                                    new AccessDeniedException(
-                                            "You are not authorized to update a doctor from another hospital"));
-
-            if ("DOCTOR".equals(role)
-                    && (doctor.getAccount() == null
-                    || !doctor.getAccount()
-                    .getId()
-                    .equals(currentUser.getId()))) {
-
-                throw new AccessDeniedException(
-                        "You are not authorized to update another doctor's profile");
-            }
-
-            if (request.getHospitalId() != null
-                    && !currentHospitalId.equals(
-                    request.getHospitalId())) {
-
-                throw new AccessDeniedException(
-                        "Doctor hospital cannot be changed");
-            }
-
-            UserEntity account =
-                    doctor.getAccount();
-
-            if (account == null) {
-                throw new IllegalArgumentException(
-                        "Doctor account is not configured");
-            }
-
-            if (request.getAccountId() != null
-                    && !request.getAccountId()
-                    .equals(account.getId())) {
-
-                if ("DOCTOR".equals(role)) {
-
-                    throw new AccessDeniedException(
-                            "Doctors cannot change doctor account ownership");
+                        throw new AccessDeniedException(
+                                        "Authenticated user not found");
                 }
 
-                UserEntity replacementAccount =
-                        userService.findUserById(
-                                request.getAccountId());
+                return currentUser;
+        }
 
-                if (replacementAccount == null
-                        || replacementAccount.getRole() == null
-                        || !"DOCTOR".equalsIgnoreCase(
-                        replacementAccount
-                                .getRole()
-                                .getRoleName())) {
+        private String getRole(UserEntity user) {
+                if (user == null
+                                || user.getRole() == null
+                                || user.getRole().getRoleName() == null) {
 
-                    throw new IllegalArgumentException(
-                            "Account is not assigned DOCTOR role.");
+                        throw new AccessDeniedException(
+                                        "Authenticated user role is missing");
                 }
 
-                if (doctorRepo.existsByAccountIdAndIdNot(
-                        request.getAccountId(),
-                        id)) {
+                String roleName = user.getRole()
+                                .getRoleName()
+                                .trim()
+                                .toUpperCase();
 
-                    throw new IllegalArgumentException(
-                            "Doctor profile already exists for this account");
+                if (roleName.startsWith("ROLE_")) {
+                        roleName = roleName.substring(5);
                 }
 
-                account = replacementAccount;
-            }
-
-            HospitalEntity hospital =
-                    doctor.getHospital();
-
-            if (hospital == null
-                    || !currentHospitalId.equals(
-                    hospital.getId())) {
-
-                throw new AccessDeniedException(
-                        "Doctor does not belong to the current hospital");
-            }
-
-            DepartmentEntity department =
-                    doctor.getDepartment();
-
-            if (department == null) {
-
-                throw new IllegalArgumentException(
-                        "Doctor department is not configured");
-            }
-
-            if (request.getDepartmentId() != null
-                    && !request.getDepartmentId()
-                    .equals(department.getId())) {
-
-                department =
-                        departmentService.findDepartmentById(
-                                request.getDepartmentId());
-
-                validateDepartmentHospital(
-                        department,
-                        currentHospitalId);
-            }
-
-            if (request.getLicenseNumber() != null
-                    && !request.getLicenseNumber()
-                    .equals(doctor.getLicenseNumber())
-                    && doctorRepo.existsByLicenseNumberAndIdNot(
-                    request.getLicenseNumber(),
-                    id)) {
-
-                throw new IllegalArgumentException(
-                        "Doctor with this license number already exists");
-            }
-
-            doctorMapper.updateEntity(
-                    doctor,
-                    request,
-                    account,
-                    hospital,
-                    department);
-
-            DoctorEntity updatedDoctor =
-                    doctorRepo.save(doctor);
-
-            DoctorResponse response =
-                    doctorMapper.toResponse(updatedDoctor);
-
-            response.setMessage(
-                    "Doctor profile updated successfully");
-
-            return response;
-
-        } catch (AccessDeniedException
-                 | IllegalArgumentException e) {
-
-            throw e;
-
-        } catch (Exception e) {
-
-            throw new RuntimeException(
-                    "Unable to update doctor profile.",
-                    e);
-        }
-    }
-
-    @Override
-    @Transactional
-    public void deleteDoctor(UUID id) {
-
-        try {
-
-            if (id == null) {
-                throw new IllegalArgumentException(
-                        "Doctor Id is required");
-            }
-
-            UUID currentHospitalId =
-                    requireCurrentHospital();
-
-            DoctorEntity doctor =
-                    doctorRepo.findByIdAndHospitalId(
-                            id,
-                            currentHospitalId)
-                            .orElseThrow(() ->
-                                    new AccessDeniedException(
-                                            "You are not authorized to delete a doctor from another hospital"));
-
-            doctor.setStatus(
-                    DoctorEntity.DoctorStatus.INACTIVE);
-
-            doctorRepo.save(doctor);
-
-        } catch (AccessDeniedException
-                 | IllegalArgumentException e) {
-
-            throw e;
-
-        } catch (Exception e) {
-
-            throw new RuntimeException(
-                    "Unable to delete doctor profile.",
-                    e);
-        }
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public DoctorEntity findDoctorById(UUID doctorId) {
-
-        if (doctorId == null) {
-            throw new IllegalArgumentException(
-                    "Doctor Id is required");
+                return roleName;
         }
 
-        return doctorRepo.findById(doctorId)
-                .orElseThrow(() ->
-                        new IllegalArgumentException(
-                                "Doctor not found"));
-    }
+        private UUID requireCurrentHospital() {
 
-    @Override
-    @Transactional(readOnly = true)
-    public DoctorEntity findDoctorByIdAndHospitalId(UUID doctorId, UUID hospitalId) {
+                UUID hospitalId = tenantContextService
+                                .getCurrentUserHospitalId();
 
-        if (doctorId == null) {
-            throw new IllegalArgumentException(
-                    "Doctor Id is required");
+                if (hospitalId == null) {
+
+                        throw new AccessDeniedException(
+                                        "Hospital context is required");
+                }
+
+                return hospitalId;
         }
 
-        if (hospitalId == null) {
-            throw new IllegalArgumentException(
-                    "Hospital Id is required");
+        private void validateDepartmentHospital(
+                        DepartmentEntity department,
+                        UUID hospitalId) {
+
+                if (department == null
+                                || department.getHospital() == null
+                                || department.getHospital().getId() == null
+                                || !hospitalId.equals(
+                                                department.getHospital().getId())) {
+
+                        throw new AccessDeniedException(
+                                        "Department does not belong to the current hospital");
+                }
         }
-
-        return doctorRepo.findByIdAndHospitalId(doctorId, hospitalId)
-                .orElseThrow(() ->
-                        new IllegalArgumentException(
-                                "Doctor not found for this hospital"));
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public DoctorResponse getDoctorByAccountId(
-            UUID accountId) {
-
-        if (accountId == null) {
-            throw new IllegalArgumentException(
-                    "Account Id is required");
-        }
-
-        requireCurrentUser();
-
-        UUID currentHospitalId =
-                requireCurrentHospital();
-
-        DoctorEntity doctor =
-                doctorRepo.findByAccountId(accountId)
-                        .orElseThrow(() ->
-                                new IllegalArgumentException(
-                                        "Doctor profile not found for this account"));
-
-        if (doctor.getHospital() == null
-                || !currentHospitalId.equals(
-                doctor.getHospital().getId())) {
-
-            throw new AccessDeniedException(
-                    "You are not authorized to view a doctor from another hospital");
-        }
-
-        return doctorMapper.toResponse(doctor);
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public java.util.Optional<DoctorEntity>
-    findDoctorEntityByAccountId(UUID accountId) {
-
-        return doctorRepo.findByAccountId(accountId);
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public java.util.Optional<DoctorEntity>
-    findDoctorByAccountUsername(String username) {
-
-        return doctorRepo.findByAccountEmail(username);
-    }
-
-    @Override
-    public void save(DoctorEntity doctor) {
-        doctorRepo.save(doctor);
-    }
-
-    @Override
-    public long count() {
-        return doctorRepo.count();
-    }
-
-    @Override
-    public long countByVerificationStatus(
-            DoctorEntity.VerificationStatus verificationStatus) {
-
-        return doctorRepo.countByVerificationStatus(
-                verificationStatus);
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public Page<DoctorEntity> getDoctorsByDepartment(
-            UUID departmentId,
-            int page,
-            int size) {
-
-        return doctorRepo.findByDepartmentId(
-                departmentId,
-                PageRequest.of(page, size));
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public long countDoctorsByDepartment(
-            UUID departmentId) {
-
-        return doctorRepo.countByDepartmentId(
-                departmentId);
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public long countDoctorsByDepartmentAndStatus(
-            UUID departmentId,
-            DoctorEntity.DoctorStatus status) {
-
-        return doctorRepo.countByDepartmentIdAndStatus(
-                departmentId,
-                status);
-    }
-
-    private UserEntity requireCurrentUser() {
-
-        UserEntity currentUser =
-                SecurityUtils.getCurrentUser();
-
-        if (currentUser == null
-                || currentUser.getId() == null) {
-
-            throw new AccessDeniedException(
-                    "Authenticated user not found");
-        }
-
-        return currentUser;
-    }
-
-    private String getRole(UserEntity user) {
-
-        if (user == null
-                || user.getRole() == null
-                || user.getRole().getRoleName() == null) {
-
-            throw new AccessDeniedException(
-                    "Authenticated user role is missing");
-        }
-
-        return user.getRole()
-                .getRoleName()
-                .trim()
-                .toUpperCase();
-    }
-
-    private UUID requireCurrentHospital() {
-
-        UUID hospitalId =
-                tenantContextService
-                        .getCurrentUserHospitalId();
-
-        if (hospitalId == null) {
-
-            throw new AccessDeniedException(
-                    "Hospital context is required");
-        }
-
-        return hospitalId;
-    }
-
-    private void validateDepartmentHospital(
-            DepartmentEntity department,
-            UUID hospitalId) {
-
-        if (department == null
-                || department.getHospital() == null
-                || department.getHospital().getId() == null
-                || !hospitalId.equals(
-                department.getHospital().getId())) {
-
-            throw new AccessDeniedException(
-                    "Department does not belong to the current hospital");
-        }
-    }
 }

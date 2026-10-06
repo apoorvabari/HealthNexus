@@ -219,4 +219,23 @@ public class DoctorPresenceService {
 
         return Set.copyOf(onlineDoctors);
     }
+
+    public void updateDoctorPresenceStatus(UUID doctorId, UUID hospitalId, boolean isOnline) {
+        if (doctorId == null || hospitalId == null) {
+            return;
+        }
+
+        Set<UUID> onlineDoctors = hospitalToOnlineDoctors.computeIfAbsent(
+                hospitalId,
+                key -> ConcurrentHashMap.newKeySet()
+        );
+
+        if (isOnline) {
+            onlineDoctors.add(doctorId);
+        } else {
+            onlineDoctors.remove(doctorId);
+        }
+
+        broadcastPresence(hospitalId, doctorId, isOnline);
+    }
 }

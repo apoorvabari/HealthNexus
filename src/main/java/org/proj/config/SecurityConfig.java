@@ -16,6 +16,8 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.authentication.HttpStatusEntryPoint;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -29,126 +31,117 @@ import java.util.stream.Collectors;
 @EnableMethodSecurity
 public class SecurityConfig {
 
-    @Autowired
-    private JwtAuthFilter jwtAuthFilter;
+        @Autowired
+        private JwtAuthFilter jwtAuthFilter;
 
-    @Autowired
-    private AdminSystemSettingsRepo adminSystemSettingsRepo;
+        @Autowired
+        private AdminSystemSettingsRepo adminSystemSettingsRepo;
 
-    @Autowired
-    private ObjectMapper objectMapper;
+        @Autowired
+        private ObjectMapper objectMapper;
 
-    @Value("${app.cors.allowed-origins:}")
-    private String allowedOrigins;
+        @Value("${app.cors.allowed-origins:}")
+        private String allowedOrigins;
 
-    @Bean
-    @Order(1)
-    public SecurityFilterChain publicSecurityFilterChain(HttpSecurity http) throws Exception {
-        http
-                .securityMatcher(
-                        "/api/users/register",
-                        "/api/users/login",
-                        "/api/users/reset-password",
-                        "/api/users/forgot-password",
-                        "/api/users/verify-email",
-                        "/api/users/resend-verification",
-                        "/api/hospitals/public"
-                )
-                .cors(Customizer.withDefaults())
-                .csrf(csrf -> csrf.disable())
-                .authorizeHttpRequests(auth -> auth
-                        .anyRequest().permitAll()
-                )
-                .sessionManagement(session ->
-                        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-                );
+        @Bean
+        @Order(1)
+        public SecurityFilterChain publicSecurityFilterChain(HttpSecurity http) throws Exception {
+                http
+                                .securityMatcher(
+                                                "/api/users/register",
+                                                "/api/users/login",
+                                                "/api/users/reset-password",
+                                                "/api/users/forgot-password",
+                                                "/api/users/verify-email",
+                                                "/api/users/resend-verification",
+                                                "/api/users/captcha",
+                                                "/api/hospitals/public",
+                                                "/api/departments/public")
+                                .cors(Customizer.withDefaults())
+                                .csrf(csrf -> csrf.disable())
+                                .authorizeHttpRequests(auth -> auth
+                                                .anyRequest().permitAll())
+                                .sessionManagement(session -> session
+                                                .sessionCreationPolicy(SessionCreationPolicy.STATELESS));
 
-        return http.build();
-    }
-
-    @Bean
-    @Order(2)
-    public SecurityFilterChain securityFilterChain(
-            HttpSecurity http,
-            AuthenticationProvider authenticationProvider
-    ) throws Exception {
-
-        http
-                .cors(Customizer.withDefaults())
-                .csrf(csrf -> csrf.disable())
-                .authorizeHttpRequests(auth -> auth
-                        .anyRequest().authenticated()
-                )
-                .sessionManagement(session ->
-                        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-                )
-                .authenticationProvider(authenticationProvider)
-                .addFilterBefore(
-                        jwtAuthFilter,
-                        UsernamePasswordAuthenticationFilter.class
-                )
-                .addFilterAfter(
-                        new org.proj.security.MaintenanceModeFilter(
-                                adminSystemSettingsRepo,
-                                objectMapper
-                        ),
-                        JwtAuthFilter.class
-                );
-
-        return http.build();
-    }
-
-    @Bean
-    public CorsConfigurationSource corsConfigurationSource() {
-
-        if (allowedOrigins == null || allowedOrigins.isBlank()) {
-            throw new IllegalStateException(
-                    "app.cors.allowed-origins must be configured"
-            );
+                return http.build();
         }
 
-        List<String> origins = Arrays.stream(allowedOrigins.split(","))
-                .map(String::trim)
-                .filter(origin -> !origin.isEmpty())
-                .collect(Collectors.toList());
+        @Bean
+        @Order(2)
+        public SecurityFilterChain securityFilterChain(
+                        HttpSecurity http,
+                        AuthenticationProvider authenticationProvider) throws Exception {
 
-        if (origins.isEmpty()) {
-            throw new IllegalStateException(
-                    "app.cors.allowed-origins must contain at least one origin"
-            );
+                http
+                                .cors(Customizer.withDefaults())
+                                .csrf(csrf -> csrf.disable())
+                                .authorizeHttpRequests(auth -> auth
+                                                .anyRequest().authenticated())
+                                .sessionManagement(session -> session
+                                                .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                                .exceptionHandling(exceptions -> exceptions
+                                                .authenticationEntryPoint(
+                                                                new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
+                                .authenticationProvider(authenticationProvider)
+                                .addFilterBefore(
+                                                jwtAuthFilter,
+                                                UsernamePasswordAuthenticationFilter.class)
+                                .addFilterAfter(
+                                                new org.proj.security.MaintenanceModeFilter(
+                                                                adminSystemSettingsRepo,
+                                                                objectMapper),
+                                                JwtAuthFilter.class);
+
+                return http.build();
         }
 
-        CorsConfiguration configuration = new CorsConfiguration();
+        @Bean
+        public CorsConfigurationSource corsConfigurationSource() {
 
-        configuration.setAllowedOrigins(origins);
+                if (allowedOrigins == null || allowedOrigins.isBlank()) {
+                        throw new IllegalStateException(
+                                        "app.cors.allowed-origins must be configured");
+                }
 
-        configuration.setAllowedMethods(List.of(
-                "GET",
-                "POST",
-                "PUT",
-                "DELETE",
-                "OPTIONS"
-        ));
+                List<String> origins = Arrays.stream(allowedOrigins.split(","))
+                                .map(String::trim)
+                                .filter(origin -> !origin.isEmpty())
+                                .collect(Collectors.toList());
 
-        configuration.setAllowedHeaders(List.of(
-                "Authorization",
-                "Content-Type",
-                "Accept",
-                "Origin",
-                "X-Hospital-Id"
-        ));
+                if (origins.isEmpty()) {
+                        throw new IllegalStateException(
+                                        "app.cors.allowed-origins must contain at least one origin");
+                }
 
-        configuration.setExposedHeaders(List.of(
-                "Content-Disposition"
-        ));
+                CorsConfiguration configuration = new CorsConfiguration();
 
-        configuration.setAllowCredentials(true);
+                configuration.setAllowedOrigins(origins);
 
-        UrlBasedCorsConfigurationSource source =
-                new UrlBasedCorsConfigurationSource();
+                configuration.setAllowedMethods(List.of(
+                                "GET",
+                                "POST",
+                                "PUT",
+                                "DELETE",
+                                "PATCH",
+                                "OPTIONS"));
 
-        source.registerCorsConfiguration("/**", configuration);
+                configuration.setAllowedHeaders(List.of(
+                                "Authorization",
+                                "Content-Type",
+                                "Accept",
+                                "Origin",
+                                "X-Hospital-Id"));
 
-        return source;
-    }
+                configuration.setExposedHeaders(List.of(
+                                "Content-Disposition"));
+
+                configuration.setAllowCredentials(true);
+
+                UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+
+                source.registerCorsConfiguration("/**", configuration);
+
+                return source;
+        }
 }

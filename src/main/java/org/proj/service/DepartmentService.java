@@ -16,7 +16,15 @@ public interface DepartmentService {
 
     DepartmentResponse getDepartmentById(UUID id);
 
+    PageResponse<DepartmentResponse> getAllDepartments(UUID hospitalId, String search, int page, int size);
+
     PageResponse<DepartmentResponse> getAllDepartments(String search, int page, int size);
+
+    PageResponse<DepartmentResponse> getPublicDepartments(
+            UUID hospitalId,
+            String search,
+            int page,
+            int size);
 
     DepartmentResponse updateDepartment(UUID id, DepartmentRequest request);
 

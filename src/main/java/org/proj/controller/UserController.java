@@ -3,6 +3,7 @@ package org.proj.controller;
 import java.util.List;
 import java.util.UUID;
 
+import org.proj.dto.CaptchaResponse;
 import org.proj.dto.LoginRequest;
 import org.proj.dto.LoginResponse;
 import org.proj.dto.LogoutResponse;
@@ -93,12 +94,14 @@ public class UserController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<PageResponse<RegisterResponse>> getAllUsers(
             @RequestParam(required = false) String search,
+            @RequestParam(required = false) String role,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
 
         return ResponseEntity.ok(
                 userService.getAllUsers(
                         search,
+                        role,
                         page,
                         size
                 )
@@ -214,5 +217,10 @@ public class UserController {
                         "If an unverified account exists for this email, a new verification link has been sent."
                 )
         );
+    }
+
+    @GetMapping("/captcha")
+    public ResponseEntity<CaptchaResponse> getCaptcha() {
+        return ResponseEntity.ok(userService.generateCaptcha());
     }
 }

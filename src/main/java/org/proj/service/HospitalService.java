@@ -25,6 +25,8 @@ public interface HospitalService {
 
     HospitalEntity findHospitalById(UUID hospitalId);
 
+    HospitalEntity findPublicHospitalById(UUID hospitalId);
+
     void save(HospitalEntity hospital);
 
     long count();

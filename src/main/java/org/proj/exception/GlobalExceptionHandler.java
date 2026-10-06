@@ -1,85 +1,175 @@
 package org.proj.exception;
 
+import jakarta.persistence.EntityNotFoundException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-import jakarta.persistence.EntityNotFoundException;
 import java.util.HashMap;
 import java.util.Map;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<Map<String, Object>> handleIllegalArgumentException(
-            IllegalArgumentException ex) {
+    private static final Logger logger =
+            LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<Map<String, Object>> handleAccessDeniedException(
+            AccessDeniedException ex) {
+
+        logger.warn("Access denied: {}", ex.getMessage());
 
         Map<String, Object> response = new HashMap<>();
-        response.put("message", ex.getMessage());
+        response.put("message", "Access denied");
 
-        HttpStatus status = HttpStatus.BAD_REQUEST;
-        if (ex.getMessage() != null) {
-            if (ex.getMessage().toLowerCase().contains("exist")) {
-                status = HttpStatus.CONFLICT;
-            } else if (ex.getMessage().toLowerCase().contains("not found")) {
-                status = HttpStatus.NOT_FOUND;
-            }
-        }
-
-        return new ResponseEntity<>(response, status);
+        return ResponseEntity
+                .status(HttpStatus.FORBIDDEN)
+                .body(response);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, Object>> handleValidationException(
             MethodArgumentNotValidException ex) {
-        
+
         Map<String, Object> response = new HashMap<>();
         Map<String, String> errors = new HashMap<>();
-        
-        ex.getBindingResult().getAllErrors().forEach((error) -> {
-            String fieldName = ((FieldError) error).getField();
-            String errorMessage = error.getDefaultMessage();
-            errors.put(fieldName, errorMessage);
-        });
-        
-        response.put("message", "Validation Failed");
+
+        ex.getBindingResult()
+                .getAllErrors()
+                .forEach(error -> {
+
+                    if (error instanceof FieldError fieldError) {
+                        errors.put(
+                                fieldError.getField(),
+                                fieldError.getDefaultMessage()
+                        );
+                    } else {
+                        errors.put(
+                                error.getObjectName(),
+                                error.getDefaultMessage()
+                        );
+                    }
+                });
+
+        response.put("message", "Validation failed");
         response.put("errors", errors);
 
-        return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(response);
     }
 
     @ExceptionHandler(EntityNotFoundException.class)
     public ResponseEntity<Map<String, Object>> handleEntityNotFoundException(
             EntityNotFoundException ex) {
 
-        Map<String, Object> response = new HashMap<>();
-        response.put("message", ex.getMessage() != null ? ex.getMessage() : "Resource not found");
+        logger.debug("Resource not found: {}", ex.getMessage());
 
-        return new ResponseEntity<>(response, HttpStatus.NOT_FOUND);
+        Map<String, Object> response = new HashMap<>();
+        response.put("message", "Resource not found");
+
+        return ResponseEntity
+                .status(HttpStatus.NOT_FOUND)
+                .body(response);
     }
 
-    @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
-    public ResponseEntity<Map<String, Object>> handleAccessDeniedException(
-            org.springframework.security.access.AccessDeniedException ex) {
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, Object>> handleIllegalArgumentException(
+            IllegalArgumentException ex) {
+
+        String message = ex.getMessage();
+
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+
+        /*
+         * Preserve the existing API behavior for common application
+         * validation cases without exposing arbitrary exception
+         * messages from unexpected code paths.
+         */
+        if (message != null) {
+
+            String normalized =
+                    message.toLowerCase();
+
+            if (normalized.contains("already exists")
+                    || normalized.contains("already exist")
+                    || normalized.contains("duplicate")) {
+
+                status = HttpStatus.CONFLICT;
+
+            } else if (normalized.contains("not found")) {
+
+                status = HttpStatus.NOT_FOUND;
+            }
+        }
 
         Map<String, Object> response = new HashMap<>();
-        response.put("message", "Access Denied: " + ex.getMessage());
 
-        return new ResponseEntity<>(response, HttpStatus.FORBIDDEN);
+        /*
+         * IllegalArgumentException is normally generated by explicit
+         * application validation, so its message is retained here.
+         */
+        response.put(
+                "message",
+                message != null
+                        ? message
+                        : "Invalid request"
+        );
+
+        return ResponseEntity
+                .status(status)
+                .body(response);
     }
 
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<Map<String, Object>> handleRuntimeException(
             RuntimeException ex) {
 
-        Map<String, Object> response = new HashMap<>();
-        response.put("message", ex.getMessage() != null ? ex.getMessage() : "Internal Server Error");
+        /*
+         * Never send the exception message/stack trace to the client.
+         * It may contain SQL, database information, class names,
+         * filesystem paths, or other internal implementation details.
+         */
+        logger.error(
+                "Unhandled application exception",
+                ex
+        );
 
-        return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
+        Map<String, Object> response = new HashMap<>();
+        response.put(
+                "message",
+                "An internal server error occurred"
+        );
+
+        return ResponseEntity
+                .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(response);
     }
 
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<Map<String, Object>> handleException(
+            Exception ex) {
+
+        logger.error(
+                "Unhandled exception",
+                ex
+        );
+
+        Map<String, Object> response = new HashMap<>();
+        response.put(
+                "message",
+                "An internal server error occurred"
+        );
+
+        return ResponseEntity
+                .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(response);
+    }
 }

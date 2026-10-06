@@ -11,9 +11,12 @@ import org.proj.dto.PasswordResetRequest;
 import org.proj.dto.LoginRequest;
 import org.proj.dto.LoginResponse;
 import org.proj.dto.PageResponse;
+import org.proj.dto.CaptchaResponse;
 import org.proj.entity.UserEntity;
 
 public interface UserService {
+
+	CaptchaResponse generateCaptcha();
 
 	RegisterResponse register(RegisterRequest request);
 
@@ -21,7 +24,7 @@ public interface UserService {
 
 	RegisterResponse getUserById(UUID id);
 
-	PageResponse<RegisterResponse> getAllUsers(String search, int page, int size);
+	PageResponse<RegisterResponse> getAllUsers(String search, String role, int page, int size);
 
 	RegisterResponse updateUser(UUID id, RegisterRequest request);
 

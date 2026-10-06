@@ -22,11 +22,11 @@ public class ReceptionistController {
     private ReceptionistService receptionistService;
 
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'RECEPTIONIST')")
     public ResponseEntity<ReceptionistResponse> createReceptionist(
             @Valid @RequestBody ReceptionistRequest request) {
         ReceptionistResponse response = receptionistService.createReceptionist(request);
-        return new ResponseEntity<>(response, HttpStatus.CREATED);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     @GetMapping("/{id}")
@@ -46,6 +46,28 @@ public class ReceptionistController {
     @PreAuthorize("hasAnyRole('ADMIN', 'DOCTOR', 'RECEPTIONIST')")
     public ResponseEntity<ReceptionistResponse> getReceptionistByAccountId(@PathVariable UUID accountId) {
         return ResponseEntity.ok(receptionistService.getReceptionistByAccountId(accountId));
+    }
+
+    @GetMapping("/me")
+    @PreAuthorize("hasRole('RECEPTIONIST')")
+    public ResponseEntity<ReceptionistResponse> getCurrentReceptionist() {
+        org.proj.entity.UserEntity currentUser = org.proj.security.SecurityUtils.getCurrentUser();
+        if (currentUser == null) {
+            throw new org.springframework.security.access.AccessDeniedException("Unauthorized");
+        }
+        return ResponseEntity.ok(receptionistService.getReceptionistByAccountId(currentUser.getId()));
+    }
+
+    @PutMapping("/me")
+    @PreAuthorize("hasRole('RECEPTIONIST')")
+    public ResponseEntity<ReceptionistResponse> updateCurrentReceptionist(
+            @Valid @RequestBody ReceptionistRequest request) {
+        org.proj.entity.UserEntity currentUser = org.proj.security.SecurityUtils.getCurrentUser();
+        if (currentUser == null) {
+            throw new org.springframework.security.access.AccessDeniedException("Unauthorized");
+        }
+        ReceptionistResponse current = receptionistService.getReceptionistByAccountId(currentUser.getId());
+        return ResponseEntity.ok(receptionistService.updateReceptionist(current.getId(), request));
     }
 
     @PutMapping("/{id}")

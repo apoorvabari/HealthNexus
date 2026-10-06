@@ -31,6 +31,16 @@ public class DepartmentController {
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
 
+    @GetMapping("/public")
+    public ResponseEntity<PageResponse<DepartmentResponse>> getPublicDepartments(
+            @RequestParam UUID hospitalId,
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "100") int size) {
+        return ResponseEntity.ok(
+                departmentService.getPublicDepartments(hospitalId, search, page, size));
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'DOCTOR', 'RECEPTIONIST', 'PATIENT')")
     public ResponseEntity<DepartmentResponse> getDepartmentById(
@@ -41,10 +51,11 @@ public class DepartmentController {
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'DOCTOR', 'RECEPTIONIST', 'PATIENT')")
     public ResponseEntity<PageResponse<DepartmentResponse>> getAllDepartments(
+            @RequestParam(required = false) UUID hospitalId,
             @RequestParam(required = false) String search,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
-        return ResponseEntity.ok(departmentService.getAllDepartments(search, page, size));
+        return ResponseEntity.ok(departmentService.getAllDepartments(hospitalId, search, page, size));
     }
 
     @PutMapping("/{id}")

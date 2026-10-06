@@ -19,10 +19,8 @@ public class RegisterRequest {
     @Pattern(regexp = "^[A-Za-z]+$", message = "First name must be between 3 and 10 characters")
     private String firstName;
 
-    @NotBlank(message = "Middle name is required")
-    @NotNull
-    @Pattern(regexp = "^[A-Za-z]{1,10}$", message = "Middle name must contain only alphabets and be between 1 and 10 characters")
-    @Size(min = 1, max = 10)
+    @Pattern(regexp = "^[A-Za-z]{0,10}$", message = "Middle name must contain only alphabets and be up to 10 characters")
+    @Size(max = 10)
     private String middleName;
 
     @NotBlank(message = "Last name is required")
@@ -42,6 +40,8 @@ public class RegisterRequest {
     @Size(min = 4, max = 20, message = "Password must be between 4 and 20 characters")
     private String password;
 
+    @NotBlank(message = "Role is required")
+    @NotNull
     private String role;
 
     @NotBlank(message = "Please enter phone number.")
@@ -54,5 +54,9 @@ public class RegisterRequest {
     private Boolean isDeleted;
 
     private String profilePicture;
+
+    private String captchaChallengeId;
+
+    private String captchaAnswer;
 
 }

@@ -16,7 +16,9 @@ import java.util.List;
 import java.util.UUID;
 
 @Entity
-@Table(name = "users")
+@Table(name = "users", indexes = {
+    @Index(name = "idx_user_email", columnList = "email")
+})
 @Data
 @Builder
 @NoArgsConstructor
@@ -62,7 +64,7 @@ public class UserEntity implements UserDetails {
 
     @Builder.Default
     @Column(nullable = false)
-    private Boolean isEmailVerified = true;
+    private Boolean isEmailVerified = false;
 
     @Column
     private LocalDateTime lastLogin;
@@ -107,5 +109,13 @@ public class UserEntity implements UserDetails {
     @Override
     public boolean isEnabled() {
         return isActive && !isDeleted;
+    }
+
+    /**
+     * Returns the account name for notifications.
+     * Currently uses the email as the identifier.
+     */
+    public String getAccountName() {
+        return email;
     }
 }

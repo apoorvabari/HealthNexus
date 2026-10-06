@@ -33,7 +33,7 @@ public class ReceptionistRequest {
 
     @NotBlank(message = "Employee code is required")
     @Size(min = 3, max = 20, message = "Employee code must be between 3 and 20 characters")
-    @Pattern(regexp = "^[A-Za-z0-9]+$", message = "Employee code must contain only alphanumeric characters")
+    @Pattern(regexp = "^[A-Za-z0-9\\-_\\s]+$", message = "Employee code must contain only alphanumeric characters, hyphens, or underscores")
     private String employeeCode;
 
     @NotNull(message = "Shift is required")

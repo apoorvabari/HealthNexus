@@ -8,6 +8,8 @@ import org.proj.entity.HospitalEntity;
 import org.proj.entity.DepartmentEntity;
 import org.proj.mapper.ReceptionistMapper;
 import org.proj.repository.ReceptionistRepo;
+import org.proj.repository.HospitalRepo;
+import org.proj.repository.DepartmentRepo;
 import org.proj.service.DepartmentService;
 import org.proj.service.HospitalService;
 import org.proj.service.NotificationService;
@@ -17,6 +19,7 @@ import org.proj.service.TenantContextService;
 import org.proj.service.UserService;
 import org.proj.security.SecurityUtils;
 import lombok.RequiredArgsConstructor;
+import jakarta.persistence.EntityNotFoundException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,6 +32,8 @@ import java.util.UUID;
 public class ReceptionistServiceImpl implements ReceptionistService {
 
     private final ReceptionistRepo receptionistRepo;
+    private final HospitalRepo hospitalRepo;
+    private final DepartmentRepo departmentRepo;
     private final UserService userService;
     private final HospitalService hospitalService;
     private final DepartmentService departmentService;
@@ -36,55 +41,152 @@ public class ReceptionistServiceImpl implements ReceptionistService {
     private final TenantContextService tenantContextService;
     private final PatientService patientService;
     private final NotificationService notificationService;
+    private final org.proj.repository.PatientConsentRepo patientConsentRepo;
 
     @Override
     @Transactional
     public ReceptionistResponse createReceptionist(ReceptionistRequest request) {
+
         try {
-            UUID currentHospitalId = requireCurrentHospital();
+            UserEntity currentUser = SecurityUtils.getCurrentUser();
+
+            if (currentUser == null || currentUser.getId() == null) {
+                throw new AccessDeniedException(
+                        "Unable to determine authenticated user");
+            }
 
             if (request == null) {
-                throw new IllegalArgumentException("Receptionist request is required");
+                throw new IllegalArgumentException(
+                        "Receptionist request is required");
             }
 
             if (request.getAccountId() == null) {
-                throw new IllegalArgumentException("Account ID is required");
+                throw new IllegalArgumentException(
+                        "Account ID is required");
             }
 
-            if (request.getHospitalId() == null
-                    || !currentHospitalId.equals(request.getHospitalId())) {
+            if (request.getHospitalId() == null) {
+                throw new IllegalArgumentException(
+                        "Hospital ID is required");
+            }
+
+            if (request.getDepartmentId() == null) {
+                throw new IllegalArgumentException(
+                        "Department ID is required");
+            }
+
+            boolean currentUserIsReceptionist =
+                    isReceptionist(currentUser);
+
+            UUID targetHospitalId =
+                    request.getHospitalId();
+
+            /*
+             * A receptionist can only create their own
+             * receptionist profile.
+             */
+            if (currentUserIsReceptionist
+                    && !currentUser.getId()
+                    .equals(request.getAccountId())) {
+
                 throw new AccessDeniedException(
-                        "You are not authorized to create a receptionist for another hospital");
+                        "Receptionists can only create their own profile");
             }
 
-            UserEntity account = userService.findUserById(request.getAccountId());
+            UserEntity account =
+                    userService.findUserById(
+                            request.getAccountId());
 
             if (account.getRole() == null
-                    || !"RECEPTIONIST".equalsIgnoreCase(account.getRole().getRoleName())) {
-                throw new IllegalArgumentException("Account is not assigned RECEPTIONIST role.");
+                    || !"RECEPTIONIST".equalsIgnoreCase(
+                    account.getRole().getRoleName())) {
+
+                throw new IllegalArgumentException(
+                        "Account is not assigned RECEPTIONIST role.");
             }
 
-            if (receptionistRepo.existsByAccountId(request.getAccountId())) {
+            /*
+             * Prevent duplicate receptionist profiles.
+             */
+            if (receptionistRepo.existsByAccountId(
+                    request.getAccountId())) {
+
                 throw new IllegalArgumentException(
                         "Receptionist profile already exists for this account");
             }
 
-            HospitalEntity hospital =
-                    hospitalService.findHospitalById(currentHospitalId);
+            HospitalEntity hospital;
+            DepartmentEntity department;
 
-            DepartmentEntity department =
-                    departmentService.findDepartmentById(request.getDepartmentId());
+            /*
+             * FIRST-TIME RECEPTIONIST ONBOARDING
+             *
+             * At this point a receptionist profile does not exist.
+             * Therefore tenantContextService cannot resolve the hospital
+             * from the receptionist profile.
+             *
+             * The receptionist may select only an ACTIVE + APPROVED
+             * public hospital.
+             */
+            if (currentUserIsReceptionist) {
 
-            if (department == null
-                    || department.getHospital() == null
-                    || !currentHospitalId.equals(department.getHospital().getId())) {
-                throw new AccessDeniedException(
-                        "Department does not belong to the current hospital");
+                hospital = hospitalRepo.findById(targetHospitalId)
+                                .orElseThrow(() ->
+                                        new AccessDeniedException(
+                                                "Selected hospital is not available for receptionist onboarding"));
+
+                /*
+                 * Department must belong to the exact selected hospital.
+                 *
+                 * We deliberately use the repository here instead of
+                 * DepartmentService.findDepartmentById(), because that
+                 * method requires an already established tenant.
+                 */
+                department =
+                        departmentRepo
+                                .findByIdAndHospitalId(
+                                        request.getDepartmentId(),
+                                        targetHospitalId)
+                                .orElseThrow(() ->
+                                        new AccessDeniedException(
+                                                "Department does not belong to the selected hospital"));
+
+            } else {
+
+                /*
+                 * ADMIN creation remains tenant restricted.
+                 */
+                UUID currentHospitalId =
+                        requireCurrentHospital();
+
+                if (!currentHospitalId.equals(
+                        targetHospitalId)) {
+
+                    throw new AccessDeniedException(
+                            "You are not authorized to create a receptionist for another hospital");
+                }
+
+                hospital =
+                        hospitalService.findHospitalById(
+                                targetHospitalId);
+
+                department =
+                        departmentRepo
+                                .findByIdAndHospitalId(
+                                        request.getDepartmentId(),
+                                        targetHospitalId)
+                                .orElseThrow(() ->
+                                        new AccessDeniedException(
+                                                "Department does not belong to the selected hospital"));
             }
 
-            if (receptionistRepo.existsByEmployeeCodeAndHospitalId(
-                    request.getEmployeeCode(),
-                    currentHospitalId)) {
+            /*
+             * Employee code must be unique inside the selected hospital.
+             */
+            if (receptionistRepo
+                    .existsByEmployeeCodeAndHospitalId(
+                            request.getEmployeeCode(),
+                            targetHospitalId)) {
 
                 throw new IllegalArgumentException(
                         "Employee code already exists in this hospital");
@@ -98,23 +200,28 @@ public class ReceptionistServiceImpl implements ReceptionistService {
                             department);
 
             ReceptionistEntity savedReceptionist =
-                    receptionistRepo.save(receptionist);
+                    receptionistRepo.save(
+                            receptionist);
 
             ReceptionistResponse response =
-                    receptionistMapper.toResponse(savedReceptionist);
+                    receptionistMapper.toResponse(
+                            savedReceptionist);
 
-            response.setMessage("Receptionist profile created successfully");
+            response.setMessage(
+                    "Receptionist profile created successfully");
 
             return response;
 
         } catch (AccessDeniedException e) {
-            
+
             throw e;
 
         } catch (IllegalArgumentException e) {
+
             throw e;
 
         } catch (Exception e) {
+
             throw new RuntimeException(
                     "Unable to create receptionist profile.",
                     e);
@@ -176,8 +283,12 @@ public class ReceptionistServiceImpl implements ReceptionistService {
     public List<ReceptionistResponse> getAllReceptionists() {
 
         try {
-            UUID currentHospitalId = requireCurrentHospital();
             UserEntity currentUser = SecurityUtils.getCurrentUser();
+            UUID currentHospitalId = tenantContextService.getCurrentUserHospitalId();
+
+            if (currentHospitalId == null) {
+                return List.of();
+            }
 
             List<ReceptionistEntity> receptionists;
 
@@ -439,34 +550,30 @@ public class ReceptionistServiceImpl implements ReceptionistService {
                         "Account Id is required");
             }
 
-            UUID currentHospitalId = requireCurrentHospital();
-
-            ReceptionistEntity receptionist =
-                    receptionistRepo.findByAccountId(accountId)
-                            .orElseThrow(() ->
-                                    new IllegalArgumentException(
-                                            "Receptionist profile not found for this account"));
-
-            if (receptionist.getHospital() == null
-                    || !currentHospitalId.equals(receptionist.getHospital().getId())) {
-                throw new AccessDeniedException(
-                        "You are not authorized to view a receptionist from another hospital");
-            }
-
-            UserEntity currentUser =
-                    SecurityUtils.getCurrentUser();
+            UserEntity currentUser = SecurityUtils.getCurrentUser();
 
             if (isReceptionist(currentUser)
                     && !accountId.equals(currentUser.getId())) {
-
                 throw new AccessDeniedException(
                         "You are not authorized to view this receptionist's profile");
             }
 
+            ReceptionistEntity receptionist =
+                    receptionistRepo.findByAccountId(accountId)
+                            .orElseThrow(() ->
+                                    new EntityNotFoundException(
+                                            "Receptionist profile not found for this account"));
+
+            UUID currentHospitalId = tenantContextService.getCurrentUserHospitalId();
+            if (currentHospitalId != null && receptionist.getHospital() != null
+                    && !currentHospitalId.equals(receptionist.getHospital().getId())) {
+                throw new AccessDeniedException(
+                        "You are not authorized to view a receptionist from another hospital");
+            }
+
             return receptionistMapper.toResponse(receptionist);
 
-        } catch (AccessDeniedException e) {
-            
+        } catch (AccessDeniedException | EntityNotFoundException e) {
             throw e;
 
         } catch (IllegalArgumentException e) {
@@ -584,6 +691,7 @@ public class ReceptionistServiceImpl implements ReceptionistService {
                 .email(request.getEmail())
                 .password(request.getPassword())
                 .phoneNumber(request.getPhoneNumber())
+                .role("PATIENT")
                 .build();
 
         org.proj.dto.RegisterResponse userAccount = userService.register(registerRequest);
@@ -607,6 +715,19 @@ public class ReceptionistServiceImpl implements ReceptionistService {
                 .status(org.proj.entity.PatientEntity.PatientStatus.ACTIVE)
                 .build();
 
-        return patientService.createPatient(patientRequest);
+        org.proj.dto.PatientResponse createdPatient = patientService.createPatient(patientRequest);
+
+        // Auto-grant APPOINTMENT_BOOKING consent for walk-in patient registration by receptionist
+        org.proj.entity.PatientEntity patientEntity = patientService.findPatientByIdAndHospitalId(createdPatient.getId(), currentHospitalId);
+        patientConsentRepo.save(
+                org.proj.entity.PatientConsentEntity.builder()
+                        .patient(patientEntity)
+                        .consentType(org.proj.entity.PatientConsentEntity.ConsentType.APPOINTMENT_BOOKING)
+                        .status(org.proj.entity.PatientConsentEntity.ConsentStatus.GRANTED)
+                        .consentedAt(java.time.LocalDateTime.now())
+                        .build()
+        );
+
+        return createdPatient;
     }
 }

@@ -15,6 +15,7 @@ import org.proj.entity.ReceptionistEntity;
 import org.proj.entity.UserEntity;
 import org.proj.mapper.AppointmentMapper;
 import org.proj.repository.AppointmentRepo;
+import org.proj.repository.ReceptionistRepo;
 import org.proj.security.SecurityUtils;
 import org.proj.service.AppointmentService;
 import org.proj.service.DepartmentService;
@@ -40,6 +41,7 @@ import java.util.UUID;
 public class AppointmentServiceImpl implements AppointmentService {
 
     private final AppointmentRepo appointmentRepo;
+    private final ReceptionistRepo receptionistRepo;
     private final HospitalService hospitalService;
     private final DepartmentService departmentService;
     private final DoctorService doctorService;
@@ -63,6 +65,25 @@ public class AppointmentServiceImpl implements AppointmentService {
             }
 
             request.setHospitalId(currentHospitalId);
+
+            if (request.getAppointmentType() == null) {
+                throw new IllegalArgumentException("Appointment type is required");
+            }
+
+            if (request.getAppointmentType() == AppointmentEntity.AppointmentType.WALK_IN) {
+                // Walk-ins do not consume a predefined appointment slot.
+                // Their planned time is recorded as the server's current time only
+                // because the database field is non-null; queue position is determined
+                // later by the check-in/queue workflow.
+                if (!LocalDate.now().equals(request.getAppointmentDate())) {
+                    throw new IllegalArgumentException(
+                            "Walk-in appointments can only be registered for today");
+                }
+                request.setAppointmentTime(LocalTime.now().withSecond(0).withNano(0));
+            } else if (request.getAppointmentTime() == null) {
+                throw new IllegalArgumentException(
+                        "Appointment time is required for scheduled appointments");
+            }
 
             HospitalEntity hospital =
                     hospitalService.findHospitalById(currentHospitalId);
@@ -107,7 +128,41 @@ public class AppointmentServiceImpl implements AppointmentService {
 
             ReceptionistEntity receptionist = null;
 
-            if (request.getBookedByReceptionistId() != null) {
+            String currentRole =
+                    currentUser.getRole() != null
+                            ? currentUser.getRole().getRoleName()
+                            : "";
+
+            if ("RECEPTIONIST".equalsIgnoreCase(currentRole)) {
+
+                receptionist =
+                        receptionistService
+                                .findReceptionistEntityByAccountId(
+                                        currentUser.getId()
+                                )
+                                .orElseThrow(() ->
+                                        new AccessDeniedException(
+                                                "Receptionist profile not found"
+                                        ));
+
+                if (receptionist.getHospital() == null
+                        || !currentHospitalId.equals(
+                                receptionist.getHospital().getId())) {
+
+                    throw new AccessDeniedException(
+                            "Receptionist does not belong to your hospital"
+                    );
+                }
+
+                /*
+                 * Never trust receptionist ID from frontend.
+                 * The authenticated receptionist is the source of truth.
+                 */
+                request.setBookedByReceptionistId(
+                        receptionist.getId()
+                );
+
+            } else if (request.getBookedByReceptionistId() != null) {
 
                 receptionist =
                         receptionistService.findReceptionistById(
@@ -116,7 +171,7 @@ public class AppointmentServiceImpl implements AppointmentService {
 
                 if (receptionist.getHospital() == null
                         || !currentHospitalId.equals(
-                        receptionist.getHospital().getId())) {
+                                receptionist.getHospital().getId())) {
 
                     throw new AccessDeniedException(
                             "Receptionist does not belong to your hospital"
@@ -142,6 +197,12 @@ public class AppointmentServiceImpl implements AppointmentService {
                 );
             }
 
+            if (doctor.getVerificationStatus() != DoctorEntity.VerificationStatus.APPROVED
+                    || doctor.getStatus() != DoctorEntity.DoctorStatus.ACTIVE) {
+                throw new IllegalArgumentException(
+                        "Doctor is not currently available for appointment booking");
+            }
+
             if (doctor.getDepartment() == null
                     || !doctor.getDepartment().getId()
                     .equals(department.getId())) {
@@ -160,8 +221,8 @@ public class AppointmentServiceImpl implements AppointmentService {
                 );
             }
 
-            if (appointmentRepo
-                    .existsByDoctorIdAndAppointmentDateAndAppointmentTimeAndHospitalId(
+            if (request.getAppointmentType() != AppointmentEntity.AppointmentType.WALK_IN
+                    && appointmentRepo.existsByDoctorIdAndAppointmentDateAndAppointmentTimeAndHospitalId(
                             doctor.getId(),
                             request.getAppointmentDate(),
                             request.getAppointmentTime(),
@@ -205,18 +266,7 @@ public class AppointmentServiceImpl implements AppointmentService {
             AppointmentEntity savedAppointment =
                     appointmentRepo.save(appointment);
 
-            notificationService.createNotification(
-                    savedAppointment.getPatient().getAccount(),
-                    "Appointment Booked",
-                    "Your appointment ("
-                            + savedAppointment.getAppointmentNumber()
-                            + ") has been booked for "
-                            + savedAppointment.getAppointmentDate()
-                            + " at "
-                            + savedAppointment.getAppointmentTime()
-                            + ".",
-                    NotificationType.APPOINTMENT_BOOKED
-            );
+            notifyAppointmentBooked(savedAppointment);
 
             AppointmentResponse response =
                     appointmentMapper.toResponse(savedAppointment);
@@ -691,18 +741,7 @@ public class AppointmentServiceImpl implements AppointmentService {
             AppointmentEntity updatedAppointment =
                     appointmentRepo.save(appointment);
 
-            notificationService.createNotification(
-                    updatedAppointment.getPatient().getAccount(),
-                    "Appointment Updated",
-                    "Your appointment ("
-                            + updatedAppointment.getAppointmentNumber()
-                            + ") has been updated. New date: "
-                            + updatedAppointment.getAppointmentDate()
-                            + " at "
-                            + updatedAppointment.getAppointmentTime()
-                            + ".",
-                    NotificationType.APPOINTMENT_UPDATED
-            );
+            notifyAppointmentUpdated(updatedAppointment);
 
             AppointmentResponse response =
                     appointmentMapper.toResponse(
@@ -824,14 +863,7 @@ public class AppointmentServiceImpl implements AppointmentService {
             AppointmentEntity updatedAppointment =
                     appointmentRepo.save(appointment);
 
-            notificationService.createNotification(
-                    updatedAppointment.getPatient().getAccount(),
-                    "Appointment Updated",
-                    "Your appointment ("
-                            + updatedAppointment.getAppointmentNumber()
-                            + ") has been updated.",
-                    NotificationType.APPOINTMENT_UPDATED
-            );
+            notifyAppointmentUpdated(updatedAppointment);
 
             AppointmentResponse response =
                     appointmentMapper.toResponse(
@@ -957,16 +989,7 @@ public class AppointmentServiceImpl implements AppointmentService {
 
             appointmentRepo.save(appointment);
 
-            notificationService.createNotification(
-                    appointment.getPatient().getAccount(),
-                    "Appointment Cancelled",
-                    "Your appointment ("
-                            + appointment.getAppointmentNumber()
-                            + ") scheduled for "
-                            + appointment.getAppointmentDate()
-                            + " has been cancelled.",
-                    NotificationType.APPOINTMENT_CANCELLED
-            );
+            notifyAppointmentCancelled(appointment);
 
         } catch (AccessDeniedException e) {
             throw e;
@@ -1221,6 +1244,12 @@ public class AppointmentServiceImpl implements AppointmentService {
                 );
             }
 
+            if (doctor.getVerificationStatus() != DoctorEntity.VerificationStatus.APPROVED
+                    || doctor.getStatus() != DoctorEntity.DoctorStatus.ACTIVE) {
+                throw new IllegalArgumentException(
+                        "Doctor is not currently available for appointment booking");
+            }
+
             List<LocalTime> allSlots =
                     new ArrayList<>();
 
@@ -1235,7 +1264,7 @@ public class AppointmentServiceImpl implements AppointmentService {
                 allSlots.add(startTime);
 
                 startTime =
-                        startTime.plusMinutes(30);
+                        startTime.plusMinutes(15);
             }
 
             List<AppointmentEntity> existingAppointments =
@@ -1410,5 +1439,116 @@ public class AppointmentServiceImpl implements AppointmentService {
                         patientId,
                         hospitalId
                 );
+    }
+
+    private void notifyAppointmentBooked(AppointmentEntity appointment) {
+        if (appointment == null) return;
+        if (appointment.getPatient() != null && appointment.getPatient().getAccount() != null) {
+            notificationService.createNotification(
+                    appointment.getPatient().getAccount(),
+                    "Appointment Confirmed",
+                    "Your appointment (" + appointment.getAppointmentNumber() + ") with Dr. "
+                            + (appointment.getDoctor() != null && appointment.getDoctor().getAccount() != null ? appointment.getDoctor().getAccount().getFirstName() + " " + appointment.getDoctor().getAccount().getLastName() : "")
+                            + " has been booked for " + appointment.getAppointmentDate() + " at " + appointment.getAppointmentTime() + ".",
+                    NotificationType.APPOINTMENT_BOOKED
+            );
+        }
+        if (appointment.getDoctor() != null && appointment.getDoctor().getAccount() != null) {
+            notificationService.createNotification(
+                    appointment.getDoctor().getAccount(),
+                    "New Appointment",
+                    "You have a new appointment (" + appointment.getAppointmentNumber() + ") scheduled for "
+                            + appointment.getAppointmentDate() + " at " + appointment.getAppointmentTime() + ".",
+                    NotificationType.APPOINTMENT_BOOKED
+            );
+        }
+        if (appointment.getHospital() != null && receptionistRepo != null) {
+            List<ReceptionistEntity> receptionists = receptionistRepo.findByHospitalId(appointment.getHospital().getId());
+            for (ReceptionistEntity rec : receptionists) {
+                if (rec.getAccount() != null) {
+                    notificationService.createNotification(
+                            rec.getAccount(),
+                            "New Appointment",
+                            "A patient appointment (" + appointment.getAppointmentNumber() + ") has been added to today's schedule for "
+                                    + appointment.getAppointmentDate() + " at " + appointment.getAppointmentTime() + ".",
+                            NotificationType.APPOINTMENT_BOOKED
+                    );
+                }
+            }
+        }
+    }
+
+    private void notifyAppointmentUpdated(AppointmentEntity appointment) {
+        if (appointment == null) return;
+        if (appointment.getPatient() != null && appointment.getPatient().getAccount() != null) {
+            notificationService.createNotification(
+                    appointment.getPatient().getAccount(),
+                    "Appointment Updated",
+                    "Your appointment (" + appointment.getAppointmentNumber() + ") has been updated to "
+                            + appointment.getAppointmentDate() + " at " + appointment.getAppointmentTime() + ".",
+                    NotificationType.APPOINTMENT_UPDATED
+            );
+        }
+        if (appointment.getDoctor() != null && appointment.getDoctor().getAccount() != null) {
+            notificationService.createNotification(
+                    appointment.getDoctor().getAccount(),
+                    "Appointment Updated",
+                    "Appointment (" + appointment.getAppointmentNumber() + ") for Patient "
+                            + (appointment.getPatient() != null && appointment.getPatient().getAccount() != null ? appointment.getPatient().getAccount().getFirstName() + " " + appointment.getPatient().getAccount().getLastName() : "")
+                            + " has been updated to " + appointment.getAppointmentDate() + " at " + appointment.getAppointmentTime() + ".",
+                    NotificationType.APPOINTMENT_UPDATED
+            );
+        }
+        if (appointment.getHospital() != null && receptionistRepo != null) {
+            List<ReceptionistEntity> receptionists = receptionistRepo.findByHospitalId(appointment.getHospital().getId());
+            for (ReceptionistEntity rec : receptionists) {
+                if (rec.getAccount() != null) {
+                    notificationService.createNotification(
+                            rec.getAccount(),
+                            "Appointment Updated",
+                            "Appointment (" + appointment.getAppointmentNumber() + ") schedule updated to "
+                                    + appointment.getAppointmentDate() + " at " + appointment.getAppointmentTime() + ".",
+                            NotificationType.APPOINTMENT_UPDATED
+                    );
+                }
+            }
+        }
+    }
+
+    private void notifyAppointmentCancelled(AppointmentEntity appointment) {
+        if (appointment == null) return;
+        if (appointment.getPatient() != null && appointment.getPatient().getAccount() != null) {
+            notificationService.createNotification(
+                    appointment.getPatient().getAccount(),
+                    "Appointment Cancelled",
+                    "Your appointment (" + appointment.getAppointmentNumber() + ") scheduled for "
+                            + appointment.getAppointmentDate() + " at " + appointment.getAppointmentTime() + " has been cancelled.",
+                    NotificationType.APPOINTMENT_CANCELLED
+            );
+        }
+        if (appointment.getDoctor() != null && appointment.getDoctor().getAccount() != null) {
+            notificationService.createNotification(
+                    appointment.getDoctor().getAccount(),
+                    "Appointment Cancelled",
+                    "Appointment (" + appointment.getAppointmentNumber() + ") for Patient "
+                            + (appointment.getPatient() != null && appointment.getPatient().getAccount() != null ? appointment.getPatient().getAccount().getFirstName() + " " + appointment.getPatient().getAccount().getLastName() : "")
+                            + " on " + appointment.getAppointmentDate() + " has been cancelled.",
+                    NotificationType.APPOINTMENT_CANCELLED
+            );
+        }
+        if (appointment.getHospital() != null && receptionistRepo != null) {
+            List<ReceptionistEntity> receptionists = receptionistRepo.findByHospitalId(appointment.getHospital().getId());
+            for (ReceptionistEntity rec : receptionists) {
+                if (rec.getAccount() != null) {
+                    notificationService.createNotification(
+                            rec.getAccount(),
+                            "Appointment Cancelled",
+                            "Appointment (" + appointment.getAppointmentNumber() + ") on "
+                                    + appointment.getAppointmentDate() + " has been cancelled.",
+                            NotificationType.APPOINTMENT_CANCELLED
+                    );
+                }
+            }
+        }
     }
 }

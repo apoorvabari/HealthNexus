@@ -20,6 +20,13 @@ public interface QueueRepo extends JpaRepository<QueueEntity, UUID> {
 
     List<QueueEntity> findByDoctorIdAndHospitalIdAndCheckedInTimeAfterOrderByQueueNumberAsc(UUID doctorId, UUID hospitalId, LocalDateTime checkedInTime);
 
+    List<QueueEntity> findByDoctorIdAndHospitalIdAndQueueStatusInAndCheckedInTimeAfterOrderByQueueNumberAsc(
+            UUID doctorId,
+            UUID hospitalId,
+            java.util.Collection<QueueEntity.QueueStatus> queueStatuses,
+            LocalDateTime checkedInTime
+    );
+
     Optional<QueueEntity> findFirstByDoctorIdAndHospitalIdAndQueueStatusAndCheckedInTimeAfterOrderByQueueNumberAsc(UUID doctorId, UUID hospitalId, QueueEntity.QueueStatus queueStatus, LocalDateTime checkedInTime);
 
     Optional<QueueEntity> findByIdAndHospitalId(UUID id, UUID hospitalId);

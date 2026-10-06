@@ -10,7 +10,12 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "patient", uniqueConstraints = @UniqueConstraint(columnNames = { "patientCode", "hospital_id" }))
+@Table(name = "patient", 
+       uniqueConstraints = @UniqueConstraint(columnNames = { "patientCode", "hospital_id" }),
+       indexes = {
+           @Index(name = "idx_patient_account", columnList = "account_id"),
+           @Index(name = "idx_patient_code_hosp", columnList = "patientCode, hospital_id")
+       })
 @Data
 @Builder
 @NoArgsConstructor
@@ -50,6 +55,14 @@ public class PatientEntity {
     @ToString.Exclude
     @EqualsAndHashCode.Exclude
     private UserEntity account;
+
+    /**
+     * Returns the account name for notifications.
+     * Delegates to the associated UserEntity's getAccountName().
+     */
+    public String getAccountName() {
+        return account != null ? account.getAccountName() : null;
+    }
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "hospital_id", nullable = false)

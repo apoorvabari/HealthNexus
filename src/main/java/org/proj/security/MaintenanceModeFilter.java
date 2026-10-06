@@ -52,7 +52,7 @@ public class MaintenanceModeFilter extends OncePerRequestFilter {
             return;
         }
 
-        if (!isMaintenanceEnabled()) {
+        if (!isMaintenanceEnabled(request)) {
             filterChain.doFilter(request, response);
             return;
         }
@@ -77,17 +77,22 @@ public class MaintenanceModeFilter extends OncePerRequestFilter {
         return path != null && path.startsWith("/api/users/login");
     }
 
-    private boolean isMaintenanceEnabled() {
-        Optional<AdminSystemSettingsEntity> settingOpt = settingsRepository.findBySettingKey("GENERAL_SETTINGS");
+    private boolean isMaintenanceEnabled(HttpServletRequest request) {
+        String hospitalIdHeader = request.getHeader("X-Hospital-Id");
+        Optional<AdminSystemSettingsEntity> settingOpt = Optional.empty();
+        if (hospitalIdHeader != null && !hospitalIdHeader.isBlank()) {
+            try {
+                java.util.UUID hospitalId = java.util.UUID.fromString(hospitalIdHeader.trim());
+                settingOpt = settingsRepository.findByHospitalIdAndSettingKey(hospitalId, "GENERAL_SETTINGS");
+            } catch (Exception ignored) {}
+        }
         if (settingOpt.isPresent()) {
             try {
                 JsonNode json = objectMapper.readTree(settingOpt.get().getSettingValue());
                 if (json.has("maintenanceMode")) {
                     return json.get("maintenanceMode").asBoolean();
                 }
-            } catch (Exception e) {
-                
-            }
+            } catch (Exception e) {}
         }
         return false;
     }
