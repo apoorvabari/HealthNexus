@@ -194,6 +194,10 @@ public class UserServiceImpl implements UserService, UserDetailsService {
                                 }
                         }
 
+                        if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
+                                throw new IllegalArgumentException("Incorrect password.");
+                        }
+
                         Authentication authentication = authenticationManager.authenticate(
                                         new UsernamePasswordAuthenticationToken(
                                                         normalizedEmail,
@@ -230,7 +234,7 @@ public class UserServiceImpl implements UserService, UserDetailsService {
 
                 } catch (org.springframework.security.authentication.BadCredentialsException e) {
                         throw new IllegalArgumentException(
-                                        "Invalid email or password.");
+                                        "Incorrect password.");
 
                 } catch (Exception e) {
                         throw new RuntimeException(

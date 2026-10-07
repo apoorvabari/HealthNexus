@@ -17,7 +17,7 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "users", indexes = {
-    @Index(name = "idx_user_email", columnList = "email")
+        @Index(name = "idx_user_email", columnList = "email")
 })
 @Data
 @Builder
@@ -50,6 +50,8 @@ public class UserEntity implements UserDetails {
     private String password;
 
     @Lob
+    @JdbcTypeCode(SqlTypes.LONGVARCHAR)
+    @Column(name = "profile_picture", columnDefinition = "LONGTEXT")
     private String profilePicture;
 
     @ManyToOne(fetch = FetchType.EAGER)

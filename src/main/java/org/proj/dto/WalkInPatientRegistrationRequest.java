@@ -37,7 +37,7 @@ public class WalkInPatientRegistrationRequest {
     @Pattern(regexp = "^[0-9]{10}$", message = "Phone number must be exactly 10 digits")
     private String phoneNumber;
 
-    @NotNull(message = "Blood group is required")
+    @NotNull(message = "Please select a blood group")
     private BloodGroup bloodGroup;
 
     @NotNull(message = "Gender is required")
@@ -67,7 +67,7 @@ public class WalkInPatientRegistrationRequest {
     @NotBlank(message = "State is required")
     private String state;
 
-    @NotBlank(message = "Postal code is required")
-    @Pattern(regexp = "^[0-9]{6}$", message = "Postal code must be exactly 6 digits")
+    @NotBlank(message = "Postal Code must contain exactly 6 numeric digits.")
+    @Pattern(regexp = "^[0-9]{6}$", message = "Postal Code must contain exactly 6 numeric digits.")
     private String postalCode;
 }

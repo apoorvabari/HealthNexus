@@ -145,7 +145,9 @@ public class GlobalExceptionHandler {
         Map<String, Object> response = new HashMap<>();
         response.put(
                 "message",
-                "An internal server error occurred"
+                ex.getMessage() != null && !ex.getMessage().isBlank()
+                        ? ex.getMessage()
+                        : "An internal server error occurred"
         );
 
         return ResponseEntity

@@ -1,12 +1,17 @@
 package org.proj.dto;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Lob;
 import jakarta.validation.constraints.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.proj.entity.PatientEntity.Gender;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import org.proj.entity.PatientEntity.BloodGroup;
 import org.proj.entity.PatientEntity.PatientStatus;
 
@@ -26,7 +31,7 @@ public class PatientRequest {
 
     private String patientCode;
 
-    @NotNull(message = "Blood group is required")
+    @NotNull(message = "Please select a blood group")
     private BloodGroup bloodGroup;
 
     @NotNull(message = "Gender is required")
@@ -56,9 +61,17 @@ public class PatientRequest {
     @NotBlank(message = "State is required")
     private String state;
 
-    @NotBlank(message = "Postal code is required")
-    @Pattern(regexp = "^[0-9]{6}$", message = "Postal code must be exactly 6 digits")
+    @NotBlank(message = "Postal Code must contain exactly 6 numeric digits.")
+    @Pattern(regexp = "^[0-9]{6}$", message = "Postal Code must contain exactly 6 numeric digits.")
     private String postalCode;
+
+    @Lob
+    @JdbcTypeCode(SqlTypes.LONGVARCHAR)
+    @Column(name = "profile_picture", columnDefinition = "LONGTEXT")
+    private String profilePicture;
+
+    @Pattern(regexp = "^[0-9]{10}$", message = "Phone number must be exactly 10 digits")
+    private String phoneNumber;
 
     @Builder.Default
     private PatientStatus status = PatientStatus.ACTIVE;

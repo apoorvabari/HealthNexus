@@ -55,6 +55,14 @@ public class PatientMapper {
         patient.setState(request.getState() != null ? request.getState() : patient.getState());
         patient.setPostalCode(request.getPostalCode() != null ? request.getPostalCode() : patient.getPostalCode());
         patient.setStatus(request.getStatus() != null ? request.getStatus() : patient.getStatus());
+        if (patient.getAccount() != null) {
+            if (request.getProfilePicture() != null) {
+                patient.getAccount().setProfilePicture(request.getProfilePicture());
+            }
+            if (request.getPhoneNumber() != null && !request.getPhoneNumber().trim().isEmpty()) {
+                patient.getAccount().setPhoneNumber(request.getPhoneNumber().trim());
+            }
+        }
     }
 
     public PatientResponse toResponse(PatientEntity patient) {
@@ -94,9 +102,11 @@ public class PatientMapper {
         }
         
         String profilePicture = null;
+        String phoneNumber = null;
         if (patient.getAccount() != null) {
             try {
                 profilePicture = patient.getAccount().getProfilePicture();
+                phoneNumber = patient.getAccount().getPhoneNumber();
             } catch (jakarta.persistence.EntityNotFoundException e) {
             }
         }
@@ -120,6 +130,7 @@ public class PatientMapper {
                 .postalCode(patient.getPostalCode())
                 .status(patient.getStatus())
                 .profilePicture(profilePicture)
+                .phoneNumber(phoneNumber)
                 .message("Success")
                 .build();
     }

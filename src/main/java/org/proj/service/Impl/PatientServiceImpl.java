@@ -17,6 +17,8 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.proj.repository.UserRepo;
+
 import java.util.List;
 import java.util.UUID;
 
@@ -29,6 +31,7 @@ public class PatientServiceImpl implements PatientService {
     private final HospitalService hospitalService;
     private final PatientMapper patientMapper;
     private final TenantContextService tenantContextService;
+    private final UserRepo userRepo;
 
     @Override
     @Transactional
@@ -435,6 +438,21 @@ public class PatientServiceImpl implements PatientService {
                     account,
                     hospital);
 
+            if (account != null) {
+                boolean accountChanged = false;
+                if (request.getProfilePicture() != null) {
+                    account.setProfilePicture(request.getProfilePicture());
+                    accountChanged = true;
+                }
+                if (request.getPhoneNumber() != null && !request.getPhoneNumber().trim().isEmpty()) {
+                    account.setPhoneNumber(request.getPhoneNumber().trim());
+                    accountChanged = true;
+                }
+                if (accountChanged) {
+                    userRepo.save(account);
+                }
+            }
+
             PatientEntity updatedPatient =
                     patientRepo.save(patient);
 
@@ -455,7 +473,7 @@ public class PatientServiceImpl implements PatientService {
         } catch (Exception e) {
 
             throw new RuntimeException(
-                    "Unable to update patient profile.",
+                    "Unable to update patient profile: " + (e.getMessage() != null ? e.getMessage() : e.toString()),
                     e);
         }
     }
