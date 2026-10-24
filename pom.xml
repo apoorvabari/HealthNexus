@@ -133,6 +133,12 @@
             <artifactId>firebase-admin</artifactId>
             <version>9.3.0</version>
         </dependency>
+        <!-- Twilio Communications SDK (SMS, Voice TwiML, WhatsApp) -->
+        <dependency>
+            <groupId>com.twilio.sdk</groupId>
+            <artifactId>twilio</artifactId>
+            <version>10.1.5</version>
+        </dependency>
     </dependencies>
 
     <build>

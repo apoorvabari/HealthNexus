@@ -27,6 +27,7 @@ import org.proj.service.PatientService;
 import org.proj.service.ReceptionistService;
 import org.proj.service.DoctorHospitalAffiliationService;
 import org.proj.service.TenantContextService;
+import org.proj.service.communication.TwilioCommunicationService;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -53,6 +54,7 @@ public class AppointmentServiceImpl implements AppointmentService {
     private final PatientConsentService patientConsentService;
     private final TenantContextService tenantContextService;
     private final DoctorHospitalAffiliationService affiliationService;
+    private final TwilioCommunicationService twilioService;
 
     @Override
     @Transactional
@@ -1534,14 +1536,25 @@ public class AppointmentServiceImpl implements AppointmentService {
     private void notifyAppointmentBooked(AppointmentEntity appointment) {
         if (appointment == null) return;
         if (appointment.getPatient() != null && appointment.getPatient().getAccount() != null) {
+            String doctorName = (appointment.getDoctor() != null && appointment.getDoctor().getAccount() != null)
+                    ? appointment.getDoctor().getAccount().getFirstName() + " " + appointment.getDoctor().getAccount().getLastName()
+                    : "your doctor";
+
             notificationService.createNotification(
                     appointment.getPatient().getAccount(),
                     "Appointment Confirmed",
                     "Your appointment (" + appointment.getAppointmentNumber() + ") with Dr. "
-                            + (appointment.getDoctor() != null && appointment.getDoctor().getAccount() != null ? appointment.getDoctor().getAccount().getFirstName() + " " + appointment.getDoctor().getAccount().getLastName() : "")
-                            + " has been booked for " + appointment.getAppointmentDate() + " at " + appointment.getAppointmentTime() + ".",
+                            + doctorName + " has been booked for " + appointment.getAppointmentDate() + " at " + appointment.getAppointmentTime() + ".",
                     NotificationType.APPOINTMENT_BOOKED
             );
+
+            // Twilio SMS Alert (Non-blocking, graceful fallback)
+            String patientPhone = appointment.getPatient().getAccount().getPhoneNumber();
+            if (patientPhone != null && !patientPhone.isBlank() && twilioService != null) {
+                String smsBody = String.format("HealthNexus: Appointment #%s with Dr. %s is confirmed for %s at %s.",
+                        appointment.getAppointmentNumber(), doctorName, appointment.getAppointmentDate(), appointment.getAppointmentTime());
+                twilioService.sendSmsAsync(patientPhone, smsBody);
+            }
         }
         if (appointment.getDoctor() != null && appointment.getDoctor().getAccount() != null) {
             notificationService.createNotification(
@@ -1560,7 +1573,7 @@ public class AppointmentServiceImpl implements AppointmentService {
                             rec.getAccount(),
                             "New Appointment",
                             "A patient appointment (" + appointment.getAppointmentNumber() + ") has been added to today's schedule for "
-                                    + appointment.getAppointmentDate() + " at " + appointment.getAppointmentTime() + ".",
+                                     + appointment.getAppointmentDate() + " at " + appointment.getAppointmentTime() + ".",
                             NotificationType.APPOINTMENT_BOOKED
                     );
                 }
@@ -1578,6 +1591,14 @@ public class AppointmentServiceImpl implements AppointmentService {
                             + appointment.getAppointmentDate() + " at " + appointment.getAppointmentTime() + ".",
                     NotificationType.APPOINTMENT_UPDATED
             );
+
+            // Twilio SMS Alert (Non-blocking)
+            String patientPhone = appointment.getPatient().getAccount().getPhoneNumber();
+            if (patientPhone != null && !patientPhone.isBlank() && twilioService != null) {
+                String smsBody = String.format("HealthNexus: Appointment #%s updated to %s at %s.",
+                        appointment.getAppointmentNumber(), appointment.getAppointmentDate(), appointment.getAppointmentTime());
+                twilioService.sendSmsAsync(patientPhone, smsBody);
+            }
         }
         if (appointment.getDoctor() != null && appointment.getDoctor().getAccount() != null) {
             notificationService.createNotification(
@@ -1615,6 +1636,14 @@ public class AppointmentServiceImpl implements AppointmentService {
                             + appointment.getAppointmentDate() + " at " + appointment.getAppointmentTime() + " has been cancelled.",
                     NotificationType.APPOINTMENT_CANCELLED
             );
+
+            // Twilio SMS Alert (Non-blocking)
+            String patientPhone = appointment.getPatient().getAccount().getPhoneNumber();
+            if (patientPhone != null && !patientPhone.isBlank() && twilioService != null) {
+                String smsBody = String.format("HealthNexus: Appointment #%s scheduled for %s has been cancelled.",
+                        appointment.getAppointmentNumber(), appointment.getAppointmentDate());
+                twilioService.sendSmsAsync(patientPhone, smsBody);
+            }
         }
         if (appointment.getDoctor() != null && appointment.getDoctor().getAccount() != null) {
             notificationService.createNotification(
