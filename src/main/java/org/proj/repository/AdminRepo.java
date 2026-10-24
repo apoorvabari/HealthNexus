@@ -13,6 +13,8 @@ public interface AdminRepo extends JpaRepository<AdminEntity, UUID> {
 
     List<AdminEntity> findAllByAccountId(UUID accountId);
 
+    List<AdminEntity> findByHospitalId(UUID hospitalId);
+
     Optional<AdminEntity> findFirstByAccountIdOrderByCreatedAtAsc(
             UUID accountId
     );

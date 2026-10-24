@@ -32,4 +32,6 @@ public interface HospitalService {
     long count();
 
     long countByVerificationStatus(HospitalEntity.VerificationStatus verificationStatus);
+
+    long countByIdAndVerificationStatus(UUID hospitalId, HospitalEntity.VerificationStatus status);
 }

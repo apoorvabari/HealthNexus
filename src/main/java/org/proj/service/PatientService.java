@@ -3,6 +3,7 @@ package org.proj.service;
 import org.proj.dto.PatientRequest;
 import org.proj.dto.PatientResponse;
 import org.proj.entity.PatientEntity;
+import java.util.Optional;
 
 import java.util.List;
 import java.util.UUID;
@@ -23,6 +24,8 @@ public interface PatientService {
 
     PatientEntity findPatientByAccountId(UUID accountId);
 
+    Optional<PatientEntity> findOptionalPatientByAccountId(UUID accountId);
+
     PatientEntity findPatientByAccountIdAndHospitalId(
             UUID accountId,
             UUID hospitalId
@@ -37,4 +40,6 @@ public interface PatientService {
     PatientResponse getMyProfile();
 
     long count();
+
+    long countByHospitalId(UUID hospitalId);
 }

@@ -2,7 +2,6 @@ package org.proj.service.impl;
 
 import org.proj.entity.ConsultationEntity;
 import org.proj.entity.ConsultationEntity.ConsultationStatus;
-import org.proj.repository.ConsultationRepo;
 import org.proj.dto.QueueRequest;
 import org.proj.dto.QueueResponse;
 import org.proj.entity.AppointmentEntity;
@@ -11,16 +10,26 @@ import org.proj.entity.QueueEntity;
 import org.proj.entity.QueueEntity.QueueStatus;
 import org.proj.mapper.QueueMapper;
 import org.proj.service.NotificationService;
-import org.proj.repository.ReceptionistRepo;
-import org.proj.repository.DoctorRepo;
 import org.proj.repository.QueueRepo;
 import org.proj.service.AppointmentService;
+import org.proj.service.DoctorService;
+import org.proj.service.ReceptionistService;
 import org.proj.service.QueueService;
 import org.proj.service.TenantContextService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Locale;
+import org.proj.security.SecurityUtils;
+
+import org.proj.entity.NotificationEntity;
+import org.proj.entity.ReceptionistEntity;
+import org.proj.entity.DoctorEntity;
+import org.proj.entity.UserEntity;
+
+import org.proj.repository.ConsultationRepo;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -50,746 +59,517 @@ public class QueueServiceImpl implements QueueService {
     private NotificationService notificationService;
 
     @Autowired
-    private ReceptionistRepo receptionistRepo;
+    private ReceptionistService receptionistService;
 
     @Autowired
-    private DoctorRepo doctorRepo;
+    private DoctorService doctorService;
 
     @Override
     @Transactional
     public QueueResponse checkIn(QueueRequest request) {
-
         try {
-            if (request == null
-                    || request.getAppointmentId() == null) {
+            QueueRequest validReq = Optional.ofNullable(request)
+                    .filter(r -> r.getAppointmentId() != null)
+                    .orElseThrow(() -> new IllegalArgumentException("Appointment ID is required"));
 
-                throw new IllegalArgumentException(
-                        "Appointment ID is required"
-                );
+            UUID hospitalId = requireCurrentHospital();
+
+            AppointmentEntity appointment = Optional.ofNullable(appointmentService.findAppointmentById(validReq.getAppointmentId()))
+                    .orElseThrow(() -> new IllegalArgumentException("Appointment not found"));
+
+            UUID apptHospitalId = (appointment.getHospital() != null) ? appointment.getHospital().getId() : null;
+            if (apptHospitalId == null || !apptHospitalId.equals(hospitalId)) {
+                throw new AccessDeniedException("Appointment does not belong to your hospital");
             }
 
-            UUID hospitalId =
-                    requireCurrentHospital();
-
-            AppointmentEntity appointment =
-                    appointmentService.findAppointmentById(
-                            request.getAppointmentId()
-                    );
-
-            if (appointment.getHospital() == null
-                    || appointment.getHospital().getId() == null
-                    || !hospitalId.equals(
-                            appointment.getHospital().getId())) {
-
-                throw new AccessDeniedException(
-                        "Appointment does not belong to your hospital"
-                );
+            if (appointment.getAppointmentStatus() == AppointmentStatus.CANCELLED) {
+                throw new IllegalArgumentException("Cannot check in a cancelled appointment");
             }
 
-            if (appointment.getAppointmentStatus()
-                    == AppointmentStatus.CANCELLED) {
-
-                throw new IllegalArgumentException(
-                        "Cannot check in a cancelled appointment"
-                );
+            if (appointment.getAppointmentStatus() == AppointmentStatus.CHECKED_IN
+                    || appointment.getAppointmentStatus() == AppointmentStatus.IN_PROGRESS
+                    || appointment.getAppointmentStatus() == AppointmentStatus.COMPLETED) {
+                throw new IllegalArgumentException("Appointment is already checked in");
             }
 
-            if (appointment.getAppointmentStatus()
-                    == AppointmentStatus.CHECKED_IN
-                    || appointment.getAppointmentStatus()
-                    == AppointmentStatus.IN_PROGRESS
-                    || appointment.getAppointmentStatus()
-                    == AppointmentStatus.COMPLETED) {
-
-                throw new IllegalArgumentException(
-                        "Appointment is already checked in"
-                );
+            if (queueRepo.existsByAppointmentIdAndHospitalId(validReq.getAppointmentId(), hospitalId)) {
+                throw new IllegalArgumentException("Queue entry already exists for this appointment");
             }
 
-            if (queueRepo.existsByAppointmentIdAndHospitalId(
-                    request.getAppointmentId(),
-                    hospitalId)) {
-
-                throw new IllegalArgumentException(
-                        "Queue entry already exists for this appointment"
-                );
-            }
-
-            appointment.setAppointmentStatus(
-                    AppointmentStatus.CHECKED_IN
-            );
-
+            appointment.setAppointmentStatus(AppointmentStatus.CHECKED_IN);
             appointmentService.save(appointment);
 
-            LocalDateTime startOfToday =
-                    LocalDate.now().atStartOfDay();
+            LocalDateTime startOfToday = LocalDate.now().atStartOfDay();
 
-            // Serialize queue-number generation per doctor. Without a row lock,
-            // two receptionists checking in patients simultaneously can both calculate
-            // the same next queue number.
-            if (appointment.getDoctor() == null
-                    || appointment.getDoctor().getId() == null) {
+            UUID doctorId = (appointment.getDoctor() != null) ? appointment.getDoctor().getId() : null;
+            if (doctorId == null) {
                 throw new IllegalArgumentException("Appointment doctor is required");
             }
 
-            doctorRepo.findLockedByIdAndHospitalId(
-                    appointment.getDoctor().getId(),
-                    hospitalId
-            ).orElseThrow(() -> new AccessDeniedException(
-                    "Doctor does not belong to your hospital"
-            ));
+            doctorService.findLockedByIdAndHospitalId(doctorId, hospitalId)
+                    .orElseThrow(() -> new AccessDeniedException("Doctor does not belong to your hospital"));
 
-            long count =
-                    queueRepo
-                            .countByDoctorIdAndHospitalIdAndCheckedInTimeAfter(
-                                    appointment.getDoctor().getId(),
-                                    hospitalId,
-                                    startOfToday
-                            );
+            long count = queueRepo.countByDoctorIdAndHospitalIdAndCheckedInTimeAfter(doctorId, hospitalId, startOfToday);
+            int nextQueueNumber = Math.toIntExact(count + 1);
+            String nextTokenNumber = String.format("Q%03d", nextQueueNumber);
 
-            int nextQueueNumber =
-                    Math.toIntExact(count + 1);
+            QueueEntity queue = queueMapper.toEntity(
+                    nextQueueNumber,
+                    nextTokenNumber,
+                    appointment.getHospital(),
+                    appointment.getDepartment(),
+                    appointment.getDoctor(),
+                    appointment
+            );
 
-            String nextTokenNumber =
-                    String.format(
-                            "Q%03d",
-                            nextQueueNumber
-                    );
+            QueueEntity savedQueue = queueRepo.save(queue);
 
-            QueueEntity queue =
-                    queueMapper.toEntity(
-                            nextQueueNumber,
-                            nextTokenNumber,
-                            appointment.getHospital(),
-                            appointment.getDepartment(),
-                            appointment.getDoctor(),
-                            appointment
-                    );
-
-            QueueEntity savedQueue =
-                    queueRepo.save(queue);
+            String patientAccountName = (appointment.getPatient() != null && appointment.getPatient().getAccountName() != null)
+                    ? appointment.getPatient().getAccountName()
+                    : "";
 
             if (appointment.getPatient() != null && appointment.getPatient().getAccount() != null) {
                 notificationService.createNotification(
                         appointment.getPatient().getAccount(),
                         "Check-in Successful",
                         "Check-in successful! Your queue token is " + savedQueue.getTokenNumber() + ".",
-                        org.proj.entity.NotificationEntity.NotificationType.QUEUE_REMINDER
+                        NotificationEntity.NotificationType.QUEUE_REMINDER
                 );
             }
+
             if (appointment.getDoctor() != null && appointment.getDoctor().getAccount() != null) {
                 notificationService.createNotification(
                         appointment.getDoctor().getAccount(),
                         "Patient Checked In",
-                        "Patient " + (appointment.getPatient() != null ? appointment.getPatient().getAccountName() : "") + " has checked in. Token " + savedQueue.getTokenNumber() + " is waiting in queue.",
-                        org.proj.entity.NotificationEntity.NotificationType.QUEUE_REMINDER
+                        "Patient " + patientAccountName + " has checked in. Token " + savedQueue.getTokenNumber() + " is waiting in queue.",
+                        NotificationEntity.NotificationType.QUEUE_REMINDER
                 );
             }
-            if (appointment.getHospital() != null && receptionistRepo != null) {
-                List<org.proj.entity.ReceptionistEntity> receptionists = receptionistRepo.findByHospitalId(appointment.getHospital().getId());
-                for (org.proj.entity.ReceptionistEntity rec : receptionists) {
-                    if (rec.getAccount() != null) {
-                        notificationService.createNotification(
-                                rec.getAccount(),
-                                "Patient Checked In",
-                                "Patient " + (appointment.getPatient() != null ? appointment.getPatient().getAccountName() : "") + " checked in. Token " + savedQueue.getTokenNumber() + " is active.",
-                                org.proj.entity.NotificationEntity.NotificationType.QUEUE_REMINDER
-                        );
+
+            if (appointment.getHospital() != null && appointment.getHospital().getId() != null) {
+                List<ReceptionistEntity> receptionists = receptionistService.findReceptionistsByHospitalId(appointment.getHospital().getId());
+                if (receptionists != null) {
+                    for (ReceptionistEntity rec : receptionists) {
+                        if (rec != null && rec.getAccount() != null) {
+                            notificationService.createNotification(
+                                    rec.getAccount(),
+                                    "Patient Checked In",
+                                    "Patient " + patientAccountName + " checked in. Token " + savedQueue.getTokenNumber() + " is active.",
+                                    NotificationEntity.NotificationType.QUEUE_REMINDER
+                            );
+                        }
                     }
                 }
             }
 
-            QueueResponse response =
-                    queueMapper.toResponse(savedQueue);
-
-            response.setMessage(
-                    "Patient checked in and queue token generated successfully"
-            );
-
+            QueueResponse response = queueMapper.toResponse(savedQueue);
+            response.setMessage("Patient checked in and queue token generated successfully");
             return response;
-
-        } catch (AccessDeniedException e) {
-            throw e;
-        } catch (IllegalArgumentException e) {
+        } catch (AccessDeniedException | IllegalArgumentException e) {
             throw e;
         } catch (Exception e) {
-            throw new RuntimeException(
-                    "Unable to check in patient.",
-                    e
-            );
+            String msg = e.getMessage() != null && !e.getMessage().isBlank()
+                    ? e.getMessage()
+                    : "Unable to check in patient.";
+            throw new RuntimeException(msg, e);
         }
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<QueueResponse> getTodayQueue() {
-
         try {
-            UUID hospitalId =
-                    requireCurrentHospital();
-
-            return queueRepo
-                    .findByHospitalIdAndCheckedInTimeAfter(
-                            hospitalId,
-                            LocalDate.now().atStartOfDay()
-                    )
+            UUID hospitalId = requireCurrentHospital();
+            return queueRepo.findByHospitalIdAndCheckedInTimeAfter(hospitalId, LocalDate.now().atStartOfDay())
                     .stream()
                     .map(queueMapper::toResponse)
                     .toList();
-
         } catch (AccessDeniedException e) {
             throw e;
         } catch (Exception e) {
-            throw new RuntimeException(
-                    "Unable to fetch today's queue.",
-                    e
-            );
+            String msg = e.getMessage() != null && !e.getMessage().isBlank()
+                    ? e.getMessage()
+                    : "Unable to fetch today's queue.";
+            throw new RuntimeException(msg, e);
         }
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<QueueResponse> getTodayQueueByDoctor(
-            UUID doctorId) {
-
+    public List<QueueResponse> getTodayQueueByDoctor(UUID doctorId) {
         try {
-            if (doctorId == null) {
-                throw new IllegalArgumentException(
-                        "Doctor ID is required"
-                );
-            }
+            UUID validDoctorId = Optional.ofNullable(doctorId)
+                    .orElseThrow(() -> new IllegalArgumentException("Doctor ID is required"));
 
-            UUID hospitalId =
-                    requireCurrentHospital();
+            UUID hospitalId = requireCurrentHospital();
 
-            return queueRepo
-                    .findByDoctorIdAndHospitalIdAndQueueStatusInAndCheckedInTimeAfterOrderByQueueNumberAsc(
-                            doctorId,
-                            hospitalId,
-                            List.of(
-                                    QueueStatus.WAITING,
-                                    QueueStatus.CALLED,
-                                    QueueStatus.IN_CONSULTATION
-                            ),
-                            LocalDate.now().atStartOfDay()
-                    )
-                    .stream()
-                    .map(queueMapper::toResponse)
-                    .toList();
-
-        } catch (AccessDeniedException e) {
-            throw e;
-        } catch (IllegalArgumentException e) {
+            return queueRepo.findByDoctorIdAndHospitalIdAndQueueStatusInAndCheckedInTimeAfterOrderByQueueNumberAsc(
+                    validDoctorId,
+                    hospitalId,
+                    List.of(QueueStatus.WAITING, QueueStatus.CALLED, QueueStatus.IN_CONSULTATION),
+                    LocalDate.now().atStartOfDay()
+            ).stream()
+            .map(queueMapper::toResponse)
+            .toList();
+        } catch (AccessDeniedException | IllegalArgumentException e) {
             throw e;
         } catch (Exception e) {
-            throw new RuntimeException(
-                    "Unable to fetch queue for doctor.",
-                    e
-            );
+            String msg = e.getMessage() != null && !e.getMessage().isBlank()
+                    ? e.getMessage()
+                    : "Unable to fetch queue for doctor.";
+            throw new RuntimeException(msg, e);
         }
     }
 
     @Override
     @Transactional
     public QueueResponse callNext(UUID doctorId) {
-
         try {
-            if (doctorId == null) {
-                throw new IllegalArgumentException(
-                        "Doctor ID is required"
-                );
-            }
+            UUID validDoctorId = Optional.ofNullable(doctorId)
+                    .orElseThrow(() -> new IllegalArgumentException("Doctor ID is required"));
 
-            UUID hospitalId =
-                    requireCurrentHospital();
+            UUID hospitalId = requireCurrentHospital();
+            LocalDateTime startOfToday = LocalDate.now().atStartOfDay();
 
-            LocalDateTime startOfToday =
-                    LocalDate.now().atStartOfDay();
-
-            Optional<QueueEntity> calledOpt =
-                    queueRepo
-                            .findFirstByDoctorIdAndHospitalIdAndQueueStatusAndCheckedInTimeAfterOrderByQueueNumberAsc(
-                                    doctorId,
-                                    hospitalId,
-                                    QueueStatus.CALLED,
-                                    startOfToday
-                            );
-
+            Optional<QueueEntity> calledOpt = queueRepo.findFirstByDoctorIdAndHospitalIdAndQueueStatusAndCheckedInTimeAfterOrderByQueueNumberAsc(
+                    validDoctorId,
+                    hospitalId,
+                    QueueStatus.CALLED,
+                    startOfToday
+            );
             if (calledOpt.isPresent()) {
-                throw new IllegalArgumentException(
-                        "Current patient is already called. Start the consultation or explicitly skip the patient before calling the next patient."
-                );
+                throw new IllegalArgumentException("Current patient is already called. Start the consultation or explicitly skip the patient before calling the next patient.");
             }
 
-            Optional<QueueEntity> inConsultOpt =
-                    queueRepo
-                            .findFirstByDoctorIdAndHospitalIdAndQueueStatusAndCheckedInTimeAfterOrderByQueueNumberAsc(
-                                    doctorId,
-                                    hospitalId,
-                                    QueueStatus.IN_CONSULTATION,
-                                    startOfToday
-                            );
-
+            Optional<QueueEntity> inConsultOpt = queueRepo.findFirstByDoctorIdAndHospitalIdAndQueueStatusAndCheckedInTimeAfterOrderByQueueNumberAsc(
+                    validDoctorId,
+                    hospitalId,
+                    QueueStatus.IN_CONSULTATION,
+                    startOfToday
+            );
             if (inConsultOpt.isPresent()) {
-                throw new IllegalArgumentException(
-                        "A patient is currently in consultation. Please complete the clinical visit summary before calling the next patient."
-                );
+                throw new IllegalArgumentException("A patient is currently in consultation. Please complete the clinical visit summary before calling the next patient.");
             }
 
-            QueueEntity nextQueue =
-                    queueRepo
-                            .findFirstByDoctorIdAndHospitalIdAndQueueStatusAndCheckedInTimeAfterOrderByQueueNumberAsc(
-                                    doctorId,
-                                    hospitalId,
-                                    QueueStatus.WAITING,
-                                    startOfToday
-                            )
-                            .orElseThrow(() ->
-                                    new IllegalArgumentException(
-                                            "No patients waiting in queue"
-                                    )
-                            );
+            QueueEntity nextQueue = queueRepo.findFirstByDoctorIdAndHospitalIdAndQueueStatusAndCheckedInTimeAfterOrderByQueueNumberAsc(
+                    validDoctorId,
+                    hospitalId,
+                    QueueStatus.WAITING,
+                    startOfToday
+            ).orElseThrow(() -> new IllegalArgumentException("No patients waiting in queue"));
 
-            nextQueue.setQueueStatus(
-                    QueueStatus.CALLED
-            );
+            nextQueue.setQueueStatus(QueueStatus.CALLED);
+            QueueEntity savedQueue = queueRepo.save(nextQueue);
 
-            QueueEntity savedQueue =
-                    queueRepo.save(nextQueue);
-
-            QueueResponse response =
-                    queueMapper.toResponse(savedQueue);
-
-            response.setMessage(
-                    "Next patient called successfully"
-            );
-
+            QueueResponse response = queueMapper.toResponse(savedQueue);
+            response.setMessage("Next patient called successfully");
             return response;
-
-        } catch (AccessDeniedException e) {
-            throw e;
-        } catch (IllegalArgumentException e) {
+        } catch (AccessDeniedException | IllegalArgumentException e) {
             throw e;
         } catch (Exception e) {
-            throw new RuntimeException(
-                    "Unable to call next patient.",
-                    e
-            );
+            String msg = e.getMessage() != null && !e.getMessage().isBlank()
+                    ? e.getMessage()
+                    : "Unable to call next patient.";
+            throw new RuntimeException(msg, e);
         }
     }
 
     @Override
     @Transactional
-    public QueueResponse startConsultation(
-            UUID queueId) {
-
+    public QueueResponse startConsultation(UUID queueId) {
         try {
-            if (queueId == null) {
-                throw new IllegalArgumentException(
-                        "Queue ID is required"
-                );
+            UUID validQueueId = Optional.ofNullable(queueId)
+                    .orElseThrow(() -> new IllegalArgumentException("Queue ID is required"));
+
+            QueueEntity queue = findAndValidateQueue(validQueueId);
+
+            if (queue.getQueueStatus() == QueueStatus.IN_CONSULTATION) {
+                QueueResponse response = queueMapper.toResponse(queue);
+                response.setMessage("Consultation is already in progress");
+                return response;
             }
 
-            UUID hospitalId =
-                    requireCurrentHospital();
+            Optional.ofNullable(queue.getQueueStatus())
+                    .filter(status -> status == QueueStatus.CALLED || status == QueueStatus.WAITING)
+                    .orElseThrow(() -> new IllegalArgumentException("Patient must be called or waiting before starting consultation"));
 
-            QueueEntity queue =
-                    queueRepo
-                            .findByIdAndHospitalId(
-                                    queueId,
-                                    hospitalId
-                            )
-                            .orElseThrow(() ->
-                                    new IllegalArgumentException(
-                                            "Queue entry not found"
-                                    )
-                            );
-
-            if (queue.getQueueStatus()
-                    != QueueStatus.CALLED) {
-
-                throw new IllegalArgumentException(
-                        "Patient must be called before starting consultation"
-                );
-            }
-
-            queue.setQueueStatus(
-                    QueueStatus.IN_CONSULTATION
-            );
-
-            queue.setConsultationStart(
-                    LocalDateTime.now()
-            );
+            queue.setQueueStatus(QueueStatus.IN_CONSULTATION);
+            queue.setConsultationStart(LocalDateTime.now());
 
             AppointmentEntity app = queue.getAppointment();
             if (app != null) {
                 app.setAppointmentStatus(AppointmentStatus.IN_PROGRESS);
                 appointmentService.save(app);
 
-                ConsultationEntity consultation = consultationRepo
-                        .findByAppointmentIdAndAppointmentHospitalId(app.getId(), hospitalId)
-                        .orElse(null);
+                UUID appHospitalId = (queue.getHospital() != null) ? queue.getHospital().getId() : null;
+                ConsultationEntity consultation = (appHospitalId != null && app.getId() != null)
+                        ? consultationRepo.findByAppointmentIdAndAppointmentHospitalId(app.getId(), appHospitalId).orElse(null)
+                        : null;
 
                 if (consultation == null) {
-                    consultation = ConsultationEntity.builder()
+                    ConsultationEntity newConsultation = ConsultationEntity.builder()
                             .appointment(app)
                             .doctor(app.getDoctor())
                             .patient(app.getPatient())
                             .status(ConsultationStatus.STARTED)
                             .startTime(LocalDateTime.now())
                             .build();
-                    consultationRepo.save(consultation);
+                    consultationRepo.save(newConsultation);
                 }
             }
 
-            QueueEntity saved =
-                    queueRepo.save(queue);
-
-            QueueResponse response =
-                    queueMapper.toResponse(saved);
-
-            response.setMessage(
-                    "Consultation started successfully"
-            );
-
+            QueueEntity saved = queueRepo.save(queue);
+            QueueResponse response = queueMapper.toResponse(saved);
+            response.setMessage("Consultation started successfully");
             return response;
-
-        } catch (AccessDeniedException e) {
-            throw e;
-        } catch (IllegalArgumentException e) {
+        } catch (AccessDeniedException | IllegalArgumentException e) {
             throw e;
         } catch (Exception e) {
-            throw new RuntimeException(
-                    "Unable to start consultation.",
-                    e
-            );
+            String msg = e.getMessage() != null && !e.getMessage().isBlank()
+                    ? e.getMessage()
+                    : "Unable to start consultation.";
+            throw new RuntimeException(msg, e);
         }
     }
 
     @Override
     @Transactional
-    public QueueResponse completeConsultation(
-            UUID queueId) {
-
+    public QueueResponse completeConsultation(UUID queueId) {
         try {
-            if (queueId == null) {
-                throw new IllegalArgumentException(
-                        "Queue ID is required"
-                );
+            UUID validQueueId = Optional.ofNullable(queueId)
+                    .orElseThrow(() -> new IllegalArgumentException("Queue ID is required"));
+
+            QueueEntity queue = findAndValidateQueue(validQueueId);
+
+            if (queue.getQueueStatus() == QueueStatus.COMPLETED) {
+                QueueResponse response = queueMapper.toResponse(queue);
+                response.setMessage("Consultation is already completed");
+                return response;
             }
 
-            UUID hospitalId =
-                    requireCurrentHospital();
+            queue.setQueueStatus(QueueStatus.COMPLETED);
+            queue.setConsultationEnd(LocalDateTime.now());
 
-            QueueEntity queue =
-                    queueRepo
-                            .findByIdAndHospitalId(
-                                    queueId,
-                                    hospitalId
-                            )
-                            .orElseThrow(() ->
-                                    new IllegalArgumentException(
-                                            "Queue entry not found"
-                                    )
-                            );
-
-            if (queue.getQueueStatus()
-                    != QueueStatus.IN_CONSULTATION) {
-
-                throw new IllegalArgumentException(
-                        "Consultation is not in progress"
-                );
-            }
-
-            queue.setQueueStatus(
-                    QueueStatus.COMPLETED
-            );
-
-            queue.setConsultationEnd(
-                    LocalDateTime.now()
-            );
-
-            AppointmentEntity app =
-                    queue.getAppointment();
-
+            AppointmentEntity app = queue.getAppointment();
             if (app != null && app.getId() != null) {
-                ConsultationEntity consultation = consultationRepo
-                        .findByAppointmentIdAndAppointmentHospitalId(app.getId(), hospitalId)
-                        .orElse(null);
-
-                if (consultation != null) {
-                    consultation.setStatus(ConsultationStatus.COMPLETED);
-                    consultation.setEndTime(LocalDateTime.now());
-                    consultationRepo.save(consultation);
+                UUID appHospitalId = (queue.getHospital() != null) ? queue.getHospital().getId() : null;
+                if (appHospitalId != null) {
+                    consultationRepo.findByAppointmentIdAndAppointmentHospitalId(app.getId(), appHospitalId)
+                            .ifPresent(consultation -> {
+                                consultation.setStatus(ConsultationStatus.COMPLETED);
+                                consultation.setEndTime(LocalDateTime.now());
+                                consultationRepo.save(consultation);
+                            });
                 }
-            }
 
-            if (app != null) {
-                app.setAppointmentStatus(
-                        AppointmentStatus.COMPLETED
-                );
+                app.setAppointmentStatus(AppointmentStatus.COMPLETED);
                 appointmentService.save(app);
             }
 
-            QueueEntity saved =
-                    queueRepo.save(queue);
+            QueueEntity saved = queueRepo.save(queue);
 
-            if (saved.getAppointment() != null && saved.getAppointment().getPatient() != null && saved.getAppointment().getPatient().getAccount() != null) {
+            UserEntity patientAcc = (saved.getAppointment() != null && saved.getAppointment().getPatient() != null)
+                    ? saved.getAppointment().getPatient().getAccount()
+                    : null;
+
+            if (patientAcc != null) {
+                DoctorEntity doc = saved.getDoctor();
+                UserEntity docAcc = (doc != null) ? doc.getAccount() : null;
+                String docName = (docAcc != null && docAcc.getAccountName() != null) ? docAcc.getAccountName() : "";
+
                 notificationService.createNotification(
-                        saved.getAppointment().getPatient().getAccount(),
+                        patientAcc,
                         "Consultation Completed",
-                        "Your consultation with Dr. " + (saved.getDoctor() != null && saved.getDoctor().getAccount() != null ? saved.getDoctor().getAccount().getAccountName() : "") + " has been completed.",
-                        org.proj.entity.NotificationEntity.NotificationType.CONSULTATION_COMPLETED
+                        "Your consultation with Dr. " + docName + " has been completed.",
+                        NotificationEntity.NotificationType.CONSULTATION_COMPLETED
                 );
             }
 
-            QueueResponse response =
-                    queueMapper.toResponse(saved);
-
-            response.setMessage(
-                    "Consultation completed successfully"
-            );
-
+            QueueResponse response = queueMapper.toResponse(saved);
+            response.setMessage("Consultation completed successfully");
             return response;
-
-        } catch (AccessDeniedException e) {
-            throw e;
-        } catch (IllegalArgumentException e) {
+        } catch (AccessDeniedException | IllegalArgumentException e) {
             throw e;
         } catch (Exception e) {
-            throw new RuntimeException(
-                    "Unable to complete consultation.",
-                    e
-            );
+            String msg = e.getMessage() != null && !e.getMessage().isBlank()
+                    ? e.getMessage()
+                    : "Unable to complete consultation.";
+            throw new RuntimeException(msg, e);
         }
     }
 
     @Override
     @Transactional
     public QueueResponse skipQueue(UUID queueId) {
-
         try {
-            if (queueId == null) {
-                throw new IllegalArgumentException(
-                        "Queue ID is required"
-                );
-            }
+            UUID validQueueId = Optional.ofNullable(queueId)
+                    .orElseThrow(() -> new IllegalArgumentException("Queue ID is required"));
 
-            UUID hospitalId =
-                    requireCurrentHospital();
+            QueueEntity queue = findAndValidateQueue(validQueueId);
 
-            QueueEntity queue =
-                    queueRepo
-                            .findByIdAndHospitalId(
-                                    queueId,
-                                    hospitalId
-                            )
-                            .orElseThrow(() ->
-                                    new IllegalArgumentException(
-                                            "Queue entry not found"
-                                    )
-                            );
+            Optional.ofNullable(queue.getQueueStatus())
+                    .filter(status -> status == QueueStatus.CALLED || status == QueueStatus.WAITING)
+                    .orElseThrow(() -> new IllegalArgumentException("Can only skip waiting or called patients"));
 
-            if (queue.getQueueStatus()
-                    != QueueStatus.CALLED
-                    && queue.getQueueStatus()
-                    != QueueStatus.WAITING) {
+            queue.setQueueStatus(QueueStatus.SKIPPED);
 
-                throw new IllegalArgumentException(
-                        "Can only skip waiting or called patients"
-                );
-            }
+            Optional.ofNullable(queue.getAppointment()).ifPresent(app -> {
+                app.setAppointmentStatus(AppointmentStatus.NO_SHOW);
+                appointmentService.save(app);
+            });
 
-            queue.setQueueStatus(
-                    QueueStatus.SKIPPED
-            );
-
-            AppointmentEntity app =
-                    queue.getAppointment();
-
-            app.setAppointmentStatus(
-                    AppointmentStatus.NO_SHOW
-            );
-
-            appointmentService.save(app);
-
-            QueueEntity saved =
-                    queueRepo.save(queue);
-
-            QueueResponse response =
-                    queueMapper.toResponse(saved);
-
-            response.setMessage(
-                    "Patient skipped successfully"
-            );
-
+            QueueEntity saved = queueRepo.save(queue);
+            QueueResponse response = queueMapper.toResponse(saved);
+            response.setMessage("Patient skipped successfully");
             return response;
-
-        } catch (AccessDeniedException e) {
-            throw e;
-        } catch (IllegalArgumentException e) {
+        } catch (AccessDeniedException | IllegalArgumentException e) {
             throw e;
         } catch (Exception e) {
-            throw new RuntimeException(
-                    "Unable to skip patient.",
-                    e
-            );
+            String msg = e.getMessage() != null && !e.getMessage().isBlank()
+                    ? e.getMessage()
+                    : "Unable to skip patient.";
+            throw new RuntimeException(msg, e);
         }
     }
 
     @Override
     @Transactional
-    public QueueResponse recallSkippedPatient(
-            UUID queueId) {
-
+    public QueueResponse recallSkippedPatient(UUID queueId) {
         try {
-            if (queueId == null) {
-                throw new IllegalArgumentException(
-                        "Queue ID is required"
-                );
+            UUID validQueueId = Optional.ofNullable(queueId)
+                    .orElseThrow(() -> new IllegalArgumentException("Queue ID is required"));
+
+            UUID hospitalId = requireCurrentHospital();
+
+            QueueEntity queue = queueRepo.findByIdAndHospitalId(validQueueId, hospitalId)
+                    .orElseThrow(() -> new IllegalArgumentException("Queue entry not found"));
+
+            Optional.ofNullable(queue.getQueueStatus())
+                    .filter(QueueStatus.SKIPPED::equals)
+                    .orElseThrow(() -> new IllegalArgumentException("Only a skipped patient can be recalled"));
+
+            AppointmentEntity appointment = queue.getAppointment();
+            if (appointment == null) {
+                throw new IllegalArgumentException("Queue entry has no appointment");
             }
 
-            UUID hospitalId =
-                    requireCurrentHospital();
-
-            QueueEntity queue =
-                    queueRepo
-                            .findByIdAndHospitalId(
-                                    queueId,
-                                    hospitalId
-                            )
-                            .orElseThrow(() ->
-                                    new IllegalArgumentException(
-                                            "Queue entry not found"
-                                    )
-                            );
-
-            if (queue.getQueueStatus()
-                    != QueueStatus.SKIPPED) {
-
-                throw new IllegalArgumentException(
-                        "Only a skipped patient can be recalled"
-                );
+            UUID apptHospitalId = (appointment.getHospital() != null) ? appointment.getHospital().getId() : null;
+            if (apptHospitalId == null || !apptHospitalId.equals(hospitalId)) {
+                throw new AccessDeniedException("Appointment does not belong to your hospital");
             }
 
-            if (queue.getAppointment() == null) {
-                throw new IllegalArgumentException(
-                        "Queue entry has no appointment"
-                );
+            if (appointment.getAppointmentStatus() != AppointmentStatus.NO_SHOW) {
+                throw new IllegalArgumentException("Only a no-show appointment can be recalled from a skipped queue");
             }
 
-            AppointmentEntity appointment =
-                    queue.getAppointment();
-
-            if (appointment.getHospital() == null
-                    || appointment.getHospital().getId() == null
-                    || !hospitalId.equals(
-                            appointment.getHospital().getId())) {
-
-                throw new AccessDeniedException(
-                        "Appointment does not belong to your hospital"
-                );
+            if (appointment.getAppointmentDate() == null || !appointment.getAppointmentDate().equals(LocalDate.now())) {
+                throw new IllegalArgumentException("Only today's skipped patient can be recalled");
             }
 
-            if (appointment.getAppointmentStatus()
-                    != AppointmentStatus.NO_SHOW) {
+            LocalDateTime startOfToday = LocalDate.now().atStartOfDay();
 
-                throw new IllegalArgumentException(
-                        "Only a no-show appointment can be recalled from a skipped queue"
-                );
-            }
-
-            if (appointment.getAppointmentDate() == null
-                    || !appointment.getAppointmentDate()
-                    .equals(LocalDate.now())) {
-
-                throw new IllegalArgumentException(
-                        "Only today's skipped patient can be recalled"
-                );
-            }
-
-            LocalDateTime startOfToday =
-                    LocalDate.now().atStartOfDay();
-
-            long existingQueueCount =
-                    queueRepo
-                            .countByDoctorIdAndHospitalIdAndCheckedInTimeAfter(
-                                    queue.getDoctor().getId(),
-                                    hospitalId,
-                                    startOfToday
-                            );
-
-            int nextQueueNumber =
-                    Math.toIntExact(
-                            existingQueueCount + 1
-                    );
-
-            queue.setQueueNumber(
-                    nextQueueNumber
+            long existingQueueCount = queueRepo.countByDoctorIdAndHospitalIdAndCheckedInTimeAfter(
+                    queue.getDoctor().getId(),
+                    hospitalId,
+                    startOfToday
             );
 
-            queue.setTokenNumber(
-                    String.format(
-                            "Q%03d",
-                            nextQueueNumber
-                    )
-            );
+            int nextQueueNumber = Math.toIntExact(existingQueueCount + 1);
 
-            queue.setQueueStatus(
-                    QueueStatus.WAITING
-            );
-
-            queue.setCheckedInTime(
-                    LocalDateTime.now()
-            );
-
+            queue.setQueueNumber(nextQueueNumber);
+            queue.setTokenNumber(String.format("Q%03d", nextQueueNumber));
+            queue.setQueueStatus(QueueStatus.WAITING);
+            queue.setCheckedInTime(LocalDateTime.now());
             queue.setConsultationStart(null);
             queue.setConsultationEnd(null);
-
             queue.setQueueReminderSentAt(null);
 
-            appointment.setAppointmentStatus(
-                    AppointmentStatus.CHECKED_IN
-            );
-
+            appointment.setAppointmentStatus(AppointmentStatus.CHECKED_IN);
             appointmentService.save(appointment);
 
-            QueueEntity savedQueue =
-                    queueRepo.save(queue);
-
-            QueueResponse response =
-                    queueMapper.toResponse(savedQueue);
-
-            response.setMessage(
-                    "Skipped patient recalled successfully and returned to the waiting queue"
-            );
-
+            QueueEntity savedQueue = queueRepo.save(queue);
+            QueueResponse response = queueMapper.toResponse(savedQueue);
+            response.setMessage("Skipped patient recalled successfully and returned to the waiting queue");
             return response;
-
-        } catch (AccessDeniedException e) {
-            throw e;
-        } catch (IllegalArgumentException e) {
+        } catch (AccessDeniedException | IllegalArgumentException e) {
             throw e;
         } catch (Exception e) {
-            throw new RuntimeException(
-                    "Unable to recall skipped patient.",
-                    e
-            );
+            String msg = e.getMessage() != null && !e.getMessage().isBlank()
+                    ? e.getMessage()
+                    : "Unable to recall skipped patient.";
+            throw new RuntimeException(msg, e);
         }
     }
 
-    private UUID requireCurrentHospital() {
+    @Override
+    @Transactional
+    public QueueResponse updateQueueStatus(UUID queueId, String status) {
+        if (status == null || status.trim().isBlank()) {
+            throw new IllegalArgumentException("Status is required");
+        }
+        String upper = status.trim().toUpperCase(java.util.Locale.ROOT);
 
-        UUID hospitalId =
-                tenantContextService
-                        .getCurrentUserHospitalId();
+        return switch (upper) {
+            case "IN_CONSULTATION" -> startConsultation(queueId);
+            case "COMPLETED" -> completeConsultation(queueId);
+            case "SKIPPED" -> skipQueue(queueId);
+            case "CALLED" -> {
+                QueueEntity q = findAndValidateQueue(queueId);
+                q.setQueueStatus(QueueStatus.CALLED);
+                yield queueMapper.toResponse(queueRepo.save(q));
+            }
+            case "WAITING" -> {
+                QueueEntity q = findAndValidateQueue(queueId);
+                q.setQueueStatus(QueueStatus.WAITING);
+                yield queueMapper.toResponse(queueRepo.save(q));
+            }
+            default -> throw new IllegalArgumentException("Unsupported queue status: " + status);
+        };
+    }
 
-        if (hospitalId == null) {
-            throw new AccessDeniedException(
-                    "Hospital context is required"
-            );
+    private QueueEntity findAndValidateQueue(UUID queueId) {
+        if (queueId == null) {
+            throw new IllegalArgumentException("Queue ID is required");
         }
 
+        QueueEntity queue = queueRepo.findById(queueId)
+                .orElseThrow(() -> new IllegalArgumentException("Queue entry not found"));
+
+        UUID hospitalId = tenantContextService.getCurrentUserHospitalId();
+        org.proj.entity.UserEntity currentUser = SecurityUtils.getCurrentUser();
+        if (currentUser == null) {
+            throw new AccessDeniedException("User is not authenticated");
+        }
+
+        String role = (currentUser.getRole() != null && currentUser.getRole().getRoleName() != null)
+                ? currentUser.getRole().getRoleName().trim().toUpperCase(Locale.ROOT)
+                : "";
+
+        if ("DOCTOR".equals(role)) {
+            DoctorEntity doctorEntity = doctorService.findDoctorEntityByAccountId(currentUser.getId()).orElse(null);
+            UUID currentDoctorId = (doctorEntity != null) ? doctorEntity.getId() : null;
+
+            boolean isAssignedDoctor = (queue.getDoctor() != null && currentDoctorId != null && queue.getDoctor().getId().equals(currentDoctorId))
+                    || (queue.getDoctor() != null && queue.getDoctor().getAccount() != null && queue.getDoctor().getAccount().getId().equals(currentUser.getId()));
+            boolean isSameHospital = hospitalId != null
+                    && queue.getHospital() != null
+                    && queue.getHospital().getId().equals(hospitalId);
+
+            if (!isAssignedDoctor && !isSameHospital) {
+                throw new AccessDeniedException("You are not authorized to manage this queue entry");
+            }
+        } else if (hospitalId != null && queue.getHospital() != null && !queue.getHospital().getId().equals(hospitalId)) {
+            throw new AccessDeniedException("Queue entry belongs to another hospital");
+        }
+
+        return queue;
+    }
+
+    private UUID requireCurrentHospital() {
+        UUID hospitalId = tenantContextService.getCurrentUserHospitalId();
+        if (hospitalId == null) {
+            throw new AccessDeniedException("Hospital context is required");
+        }
         return hospitalId;
     }
 }

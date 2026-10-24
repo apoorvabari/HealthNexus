@@ -4,6 +4,7 @@ import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.proj.dto.LoginRequest;
@@ -13,6 +14,7 @@ import org.proj.dto.PageResponse;
 import org.proj.dto.PasswordResetRequest;
 import org.proj.dto.RegisterRequest;
 import org.proj.dto.RegisterResponse;
+import org.proj.dto.TwoFactorVerifyRequest;
 import org.proj.dto.UserFilterRequest;
 import org.proj.entity.PasswordResetTokenEntity;
 import org.proj.entity.RoleEntity;
@@ -51,7 +53,7 @@ public class UserServiceImpl implements UserService, UserDetailsService {
         private static final Logger logger = LoggerFactory.getLogger(UserServiceImpl.class);
 
         private static final int RESET_TOKEN_BYTES = 32;
-        private static final int RESET_TOKEN_EXPIRATION_MINUTES = 30;
+        private static final int RESET_TOKEN_EXPIRATION_MINUTES = 15;
 
         private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
@@ -114,8 +116,9 @@ public class UserServiceImpl implements UserService, UserDetailsService {
                                                 "User email already exists");
                         }
 
-                        if (userRepository.existsByPhoneNumber(
-                                        request.getPhoneNumber())) {
+                        if (request.getPhoneNumber() != null
+                                        && !request.getPhoneNumber().trim().isEmpty()
+                                        && userRepository.existsByPhoneNumber(request.getPhoneNumber().trim())) {
 
                                 throw new IllegalArgumentException(
                                                 "Phone number already exists");
@@ -196,6 +199,25 @@ public class UserServiceImpl implements UserService, UserDetailsService {
 
                         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
                                 throw new IllegalArgumentException("Incorrect password.");
+                        }
+
+                        if (Boolean.TRUE.equals(user.getTwoFactorEnabled())) {
+                                String otp = String.format("%06d", new java.security.SecureRandom().nextInt(1_000_000));
+                                user.setTwoFactorOtp(otp);
+                                user.setTwoFactorOtpExpiry(LocalDateTime.now().plusMinutes(10));
+                                userRepository.save(user);
+
+                                emailService.sendTwoFactorOtpEmail(user.getEmail(), otp);
+
+                                return LoginResponse.builder()
+                                                .email(user.getEmail())
+                                                .role(user.getRole() != null
+                                                                ? user.getRole().getRoleName()
+                                                                : null)
+                                                .twoFactorRequired(true)
+                                                .twoFactorEmail(user.getEmail())
+                                                .message("Two-factor authentication code sent to your email.")
+                                                .build();
                         }
 
                         Authentication authentication = authenticationManager.authenticate(
@@ -280,6 +302,12 @@ public class UserServiceImpl implements UserService, UserDetailsService {
 
                         Page<UserEntity> userPage = userRepository.searchUsersByHospital(
                                         hospitalId, search, role, PageRequest.of(page, size));
+
+                        // Fallback: If hospital has no matching users, show all non-admin users
+                        if (userPage.getTotalElements() == 0) {
+                                userPage = userRepository.searchUsersByHospital(
+                                                null, search, role, PageRequest.of(page, size));
+                        }
 
                         List<RegisterResponse> content = userPage.getContent()
                                         .stream()
@@ -958,4 +986,226 @@ public class UserServiceImpl implements UserService, UserDetailsService {
                         throw new IllegalArgumentException("Incorrect CAPTCHA answer. Please try again.");
                 }
         }
+
+        @Override
+        public boolean verifyResetToken(String token) {
+                if (token == null || token.trim().isEmpty()) {
+                        return false;
+                }
+                Optional<PasswordResetTokenEntity> resetTokenOpt = passwordResetTokenRepository
+                                .findByTokenAndUsedFalse(token.trim());
+                if (resetTokenOpt.isEmpty()) {
+                        return false;
+                }
+                PasswordResetTokenEntity resetToken = resetTokenOpt.get();
+                if (resetToken.getExpiryDate() == null || resetToken.getExpiryDate().isBefore(LocalDateTime.now())) {
+                        return false;
+                }
+                UserEntity user = resetToken.getUser();
+                return user != null && Boolean.TRUE.equals(user.getIsActive()) && !Boolean.TRUE.equals(user.getIsDeleted());
+        }
+
+        @Override
+        @Transactional
+        public LoginResponse googleLogin(org.proj.dto.GoogleLoginRequest request) {
+                if (request == null || request.getIdToken() == null || request.getIdToken().trim().isEmpty()) {
+                        throw new IllegalArgumentException("Firebase ID Token is required");
+                }
+                if (request.getRole() == null || request.getRole().trim().isEmpty()) {
+                        throw new IllegalArgumentException("Role is required");
+                }
+
+                String requestedRole = request.getRole().trim().toUpperCase();
+
+                com.google.firebase.auth.FirebaseToken decodedToken;
+                try {
+                        decodedToken = com.google.firebase.auth.FirebaseAuth.getInstance()
+                                        .verifyIdToken(request.getIdToken().trim());
+                } catch (Exception e) {
+                        logger.error("Failed to verify Firebase ID Token", e);
+                        throw new IllegalArgumentException("Invalid Firebase ID Token");
+                }
+
+                if (!decodedToken.isEmailVerified()) {
+                        throw new IllegalArgumentException("Email is not verified with Google");
+                }
+
+                String verifiedEmail = decodedToken.getEmail();
+                if (verifiedEmail == null || verifiedEmail.trim().isEmpty()) {
+                        throw new IllegalArgumentException("Verified email missing from Firebase token");
+                }
+                String normalizedEmail = verifiedEmail.trim().toLowerCase();
+                String name = decodedToken.getName();
+                String picture = decodedToken.getPicture();
+
+                UserEntity user = userRepository.findByEmail(normalizedEmail).orElse(null);
+
+                if (user != null) {
+                        if (user.getRole() != null && "ADMIN".equalsIgnoreCase(user.getRole().getRoleName())) {
+                                throw new AccessDeniedException("Admin accounts must log in with email and password.");
+                        }
+                        if (Boolean.FALSE.equals(user.getIsActive()) || Boolean.TRUE.equals(user.getIsDeleted())) {
+                                throw new IllegalArgumentException("Account access blocked");
+                        }
+                        user.setIsEmailVerified(true);
+                        user.setLastLogin(LocalDateTime.now());
+                        userRepository.save(user);
+                } else {
+                        if (!"PATIENT".equalsIgnoreCase(requestedRole)) {
+                                throw new AccessDeniedException("Register through the app first");
+                        }
+
+                        RoleEntity patientRole = roleRepository.findByRoleName("patient")
+                                        .orElseThrow(() -> new IllegalArgumentException("Role not found: patient"));
+
+                        String firstName = "Patient";
+                        String lastName = "";
+                        if (name != null && !name.trim().isEmpty()) {
+                                String[] parts = name.trim().split("\\s+", 2);
+                                firstName = parts[0];
+                                if (parts.length > 1) {
+                                        lastName = parts[1];
+                                }
+                        }
+
+                        byte[] randomBytes = new byte[16];
+                        SECURE_RANDOM.nextBytes(randomBytes);
+                        String randomPassword = HexFormat.of().formatHex(randomBytes);
+
+                        user = UserEntity.builder()
+                                        .userId(UUID.randomUUID())
+                                        .firstName(firstName)
+                                        .lastName(lastName)
+                                        .email(normalizedEmail)
+                                        .password(passwordEncoder.encode(randomPassword))
+                                        .profilePicture(picture)
+                                        .role(patientRole)
+                                        .isActive(true)
+                                        .isDeleted(false)
+                                        .isEmailVerified(true)
+                                        .lastLogin(LocalDateTime.now())
+                                        .tokenVersion(0L)
+                                        .build();
+
+                        user = userRepository.saveAndFlush(user);
+                }
+
+                String jwt = jwtUtil.generateToken(user);
+
+                return LoginResponse.builder()
+                                .id(user.getId())
+                                .userId(user.getUserId())
+                                .firstName(user.getFirstName())
+                                .lastName(user.getLastName())
+                                .email(user.getEmail())
+                                .role(user.getRole() != null ? user.getRole().getRoleName() : null)
+                                .accessToken(jwt)
+                                .refreshToken(null)
+                                .lastLogin(user.getLastLogin())
+                                .message("Google authentication successful")
+                                .build();
+        }
+
+        @Override
+        public long countByHospitalId(UUID hospitalId) {
+                return userRepository.countByHospitalId(hospitalId);
+        }
+
+        @Override
+        public long countActiveByHospitalId(UUID hospitalId) {
+                return userRepository.countActiveByHospitalId(hospitalId);
+        }
+
+        @Override
+        public long countDeletedByHospitalId(UUID hospitalId) {
+                return userRepository.countDeletedByHospitalId(hospitalId);
+        }
+
+        @Override
+        public boolean existsByIdAndHospitalId(UUID userId, UUID hospitalId) {
+                return userRepository.existsByIdAndHospitalId(userId, hospitalId);
+        }
+
+        @Override
+        @org.springframework.transaction.annotation.Transactional
+        public void setTwoFactorEnabled(UUID userId, boolean enabled) {
+                UserEntity user = userRepository.findById(userId)
+                                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+                user.setTwoFactorEnabled(enabled);
+                if (!enabled) {
+                        user.setTwoFactorOtp(null);
+                        user.setTwoFactorOtpExpiry(null);
+                }
+                userRepository.save(user);
+        }
+
+        @Override
+        @org.springframework.transaction.annotation.Transactional
+        public LoginResponse verifyTwoFactor(TwoFactorVerifyRequest request) {
+                String normalizedEmail = request.getEmail().trim().toLowerCase();
+                UserEntity user = userRepository.findByEmail(normalizedEmail)
+                                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+                if (Boolean.FALSE.equals(user.getIsActive()) || Boolean.TRUE.equals(user.getIsDeleted())) {
+                        throw new IllegalArgumentException("Account access blocked");
+                }
+
+                if (!Boolean.TRUE.equals(user.getTwoFactorEnabled())) {
+                        throw new IllegalArgumentException("Two-factor authentication is not enabled for this account");
+                }
+
+                if (user.getTwoFactorOtp() == null || !user.getTwoFactorOtp().trim().equals(request.getOtp().trim())) {
+                        throw new IllegalArgumentException("Invalid verification code. Please check and try again.");
+                }
+
+                if (user.getTwoFactorOtpExpiry() == null || user.getTwoFactorOtpExpiry().isBefore(LocalDateTime.now())) {
+                        throw new IllegalArgumentException("Verification code has expired. Please request a new code.");
+                }
+
+                user.setTwoFactorOtp(null);
+                user.setTwoFactorOtpExpiry(null);
+                user.setLastLogin(LocalDateTime.now());
+                userRepository.save(user);
+
+                String jwt = jwtUtil.generateToken(user);
+
+                return LoginResponse.builder()
+                                .id(user.getId())
+                                .userId(user.getUserId())
+                                .firstName(user.getFirstName())
+                                .lastName(user.getLastName())
+                                .email(user.getEmail())
+                                .role(user.getRole() != null ? user.getRole().getRoleName() : null)
+                                .accessToken(jwt)
+                                .refreshToken(null)
+                                .lastLogin(user.getLastLogin())
+                                .twoFactorRequired(false)
+                                .message("Login successful")
+                                .build();
+        }
+
+        @Override
+        @org.springframework.transaction.annotation.Transactional
+        public void resendTwoFactorOtp(String email) {
+                String normalizedEmail = email.trim().toLowerCase();
+                UserEntity user = userRepository.findByEmail(normalizedEmail)
+                                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+                if (!Boolean.TRUE.equals(user.getTwoFactorEnabled())) {
+                        throw new IllegalArgumentException("Two-factor authentication is not enabled for this account");
+                }
+
+                String otp = String.format("%06d", new java.security.SecureRandom().nextInt(1_000_000));
+                user.setTwoFactorOtp(otp);
+                user.setTwoFactorOtpExpiry(LocalDateTime.now().plusMinutes(10));
+                userRepository.save(user);
+
+                emailService.sendTwoFactorOtpEmail(user.getEmail(), otp);
+        }
+
+        @Override
+        public List<UserEntity> findAllUsers() {
+                return userRepository.findAll();
+        }
 }
+

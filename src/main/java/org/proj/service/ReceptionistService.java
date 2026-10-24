@@ -25,6 +25,8 @@ public interface ReceptionistService {
 
     java.util.Optional<ReceptionistEntity> findReceptionistEntityByAccountId(UUID accountId);
 
+    List<ReceptionistEntity> findReceptionistsByHospitalId(UUID hospitalId);
+
     void callPatient(UUID patientId, String customMessage);
 
     org.proj.dto.PatientResponse registerWalkInPatient(org.proj.dto.WalkInPatientRegistrationRequest request);

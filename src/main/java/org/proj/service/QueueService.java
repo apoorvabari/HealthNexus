@@ -23,4 +23,6 @@ public interface QueueService {
     QueueResponse skipQueue(UUID queueId);
 
     QueueResponse recallSkippedPatient(UUID queueId);
+
+    QueueResponse updateQueueStatus(UUID queueId, String status);
 }

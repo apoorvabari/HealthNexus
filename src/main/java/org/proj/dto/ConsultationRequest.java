@@ -17,5 +17,6 @@ public class ConsultationRequest {
     @NotNull(message = "Appointment ID is required")
     private UUID appointmentId;
     
+    @jakarta.validation.constraints.Size(max = 500, message = "Remarks cannot exceed 500 characters")
     private String remarks;
 }

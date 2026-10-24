@@ -50,6 +50,21 @@ public class NotificationController {
         }
     }
 
+    @GetMapping("/unread-count")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<?> getUnreadCount() {
+        try {
+            long count = notificationService.getUnreadCount();
+            Map<String, Object> response = new HashMap<>();
+            response.put("count", count);
+            return ResponseEntity.ok(response);
+        } catch (AccessDeniedException e) {
+            return buildErrorResponse(HttpStatus.FORBIDDEN, e.getMessage());
+        } catch (Exception e) {
+            return buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Unable to fetch unread count");
+        }
+    }
+
     @PatchMapping("/{id}/read")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<?> markAsRead(@PathVariable UUID id) {

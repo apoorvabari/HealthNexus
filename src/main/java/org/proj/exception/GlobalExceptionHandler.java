@@ -27,7 +27,7 @@ public class GlobalExceptionHandler {
         logger.warn("Access denied: {}", ex.getMessage());
 
         Map<String, Object> response = new HashMap<>();
-        response.put("message", "Access denied");
+        response.put("message", ex.getMessage() != null && !ex.getMessage().isBlank() ? ex.getMessage() : "Access denied");
 
         return ResponseEntity
                 .status(HttpStatus.FORBIDDEN)
@@ -154,6 +154,16 @@ public class GlobalExceptionHandler {
                 .status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(response);
     }
+
+    @ExceptionHandler(DoctorLocationConflictException.class)
+    public ResponseEntity<org.proj.dto.DoctorLocationConflictResponse> handleDoctorLocationConflict(
+            DoctorLocationConflictException ex) {
+        logger.warn("Doctor duty location conflict: {}", ex.getMessage());
+        return ResponseEntity
+                .status(HttpStatus.CONFLICT)
+                .body(ex.getConflictData());
+    }
+
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleException(

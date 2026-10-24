@@ -35,68 +35,76 @@ public class ConsultationServiceImpl implements ConsultationService {
     @Override
     @Transactional
     public ConsultationResponse startConsultation(ConsultationRequest request) {
+        try {
+            if (request == null || request.getAppointmentId() == null) {
+                throw new IllegalArgumentException("Appointment Id is required");
+            }
 
-        if (request == null || request.getAppointmentId() == null) {
-            throw new IllegalArgumentException("Appointment Id is required");
-        }
+            UUID hospitalId = requireCurrentHospital();
 
-        UUID hospitalId = requireCurrentHospital();
+            AppointmentEntity appointment =
+                    appointmentService.findAppointmentById(
+                            request.getAppointmentId()
+                    );
 
-        AppointmentEntity appointment =
-                appointmentService.findAppointmentById(
-                        request.getAppointmentId()
+            validateAppointmentTenant(appointment, hospitalId);
+            validateAppointmentForConsultation(appointment);
+
+            ConsultationEntity existing =
+                    consultationRepo
+                            .findByAppointmentIdAndAppointmentHospitalId(
+                                    appointment.getId(),
+                                    hospitalId
+                            )
+                            .orElse(null);
+
+            if (existing != null) {
+                throw new IllegalArgumentException(
+                        "Consultation already started for this appointment"
                 );
+            }
 
-        validateAppointmentTenant(appointment, hospitalId);
-        validateAppointmentForConsultation(appointment);
-
-        ConsultationEntity existing =
-                consultationRepo
-                        .findByAppointmentIdAndAppointmentHospitalId(
-                                appointment.getId(),
-                                hospitalId
-                        )
-                        .orElse(null);
-
-        if (existing != null) {
-            throw new IllegalArgumentException(
-                    "Consultation already started for this appointment"
+            validateDoctorAccessForAppointment(
+                    appointment,
+                    hospitalId
             );
+
+            AppointmentRequest updateAppointmentRequest =
+                    new AppointmentRequest();
+
+            updateAppointmentRequest.setAppointmentStatus(
+                    AppointmentEntity.AppointmentStatus.IN_PROGRESS
+            );
+
+            appointmentService.updateAppointment(
+                    appointment.getId(),
+                    updateAppointmentRequest
+            );
+
+            ConsultationEntity consultation =
+                    ConsultationEntity.builder()
+                            .appointment(appointment)
+                            .doctor(appointment.getDoctor())
+                            .patient(appointment.getPatient())
+                            .remarks(request.getRemarks())
+                            .status(
+                                    ConsultationEntity.ConsultationStatus.STARTED
+                            )
+                            .startTime(LocalDateTime.now())
+                            .build();
+
+            ConsultationEntity saved =
+                    consultationRepo.save(consultation);
+
+            return mapToResponse(saved);
+        } catch (AccessDeniedException | IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            String msg = e.getMessage() != null && !e.getMessage().isBlank()
+                    ? e.getMessage()
+                    : "Unable to start consultation";
+            throw new RuntimeException(msg, e);
         }
-
-        validateDoctorAccessForAppointment(
-                appointment,
-                hospitalId
-        );
-
-        AppointmentRequest updateAppointmentRequest =
-                new AppointmentRequest();
-
-        updateAppointmentRequest.setAppointmentStatus(
-                AppointmentEntity.AppointmentStatus.IN_PROGRESS
-        );
-
-        appointmentService.updateAppointment(
-                appointment.getId(),
-                updateAppointmentRequest
-        );
-
-        ConsultationEntity consultation =
-                ConsultationEntity.builder()
-                        .appointment(appointment)
-                        .doctor(appointment.getDoctor())
-                        .patient(appointment.getPatient())
-                        .remarks(request.getRemarks())
-                        .status(
-                                ConsultationEntity.ConsultationStatus.STARTED
-                        )
-                        .startTime(LocalDateTime.now())
-                        .build();
-
-        ConsultationEntity saved =
-                consultationRepo.save(consultation);
-
-        return mapToResponse(saved);
     }
 
     @Override
@@ -104,55 +112,67 @@ public class ConsultationServiceImpl implements ConsultationService {
     public ConsultationResponse saveVisit(
             UUID consultationId,
             String remarks) {
+        try {
+            if (consultationId == null) {
+                throw new IllegalArgumentException("Consultation Id is required");
+            }
 
-        UUID hospitalId = requireCurrentHospital();
+            UUID hospitalId = requireCurrentHospital();
 
-        ConsultationEntity consultation =
-                consultationRepo
-                        .findByIdAndAppointmentHospitalId(
-                                consultationId,
-                                hospitalId
-                        )
-                        .orElseThrow(() ->
-                                new IllegalArgumentException(
-                                        "Consultation not found"
-                                ));
+            ConsultationEntity consultation =
+                    consultationRepo
+                            .findByIdAndAppointmentHospitalId(
+                                    consultationId,
+                                    hospitalId
+                            )
+                            .orElseThrow(() ->
+                                    new IllegalArgumentException(
+                                            "Consultation not found"
+                                    ));
 
-        validateDoctorAccess(
-                consultation,
-                hospitalId
-        );
-
-        if (consultation.getStatus()
-                != ConsultationEntity.ConsultationStatus.STARTED) {
-
-            throw new IllegalArgumentException(
-                    "Visit can only be saved while the consultation is in progress"
+            validateDoctorAccess(
+                    consultation,
+                    hospitalId
             );
+
+            if (consultation.getStatus()
+                    != ConsultationEntity.ConsultationStatus.STARTED) {
+
+                throw new IllegalArgumentException(
+                        "Visit can only be saved while the consultation is in progress"
+                );
+            }
+
+            if (remarks == null || remarks.trim().isEmpty()) {
+                throw new IllegalArgumentException(
+                        "Visit summary is required"
+                );
+            }
+
+            if (medicalRecordService.getMedicalRecordByAppointment(
+                    consultation.getAppointment().getId()
+            ) == null) {
+
+                throw new IllegalArgumentException(
+                        "Medical record must be saved before saving the visit"
+                );
+            }
+
+            consultation.setRemarks(remarks.trim());
+            consultation.setVisitSaved(true);
+
+            ConsultationEntity saved =
+                    consultationRepo.save(consultation);
+
+            return mapToResponse(saved);
+        } catch (AccessDeniedException | IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            String msg = e.getMessage() != null && !e.getMessage().isBlank()
+                    ? e.getMessage()
+                    : "Unable to save visit";
+            throw new RuntimeException(msg, e);
         }
-
-        if (remarks == null || remarks.trim().isEmpty()) {
-            throw new IllegalArgumentException(
-                    "Visit summary is required"
-            );
-        }
-
-        if (medicalRecordService.getMedicalRecordByAppointment(
-                consultation.getAppointment().getId()
-        ) == null) {
-
-            throw new IllegalArgumentException(
-                    "Medical record must be saved before saving the visit"
-            );
-        }
-
-        consultation.setRemarks(remarks.trim());
-        consultation.setVisitSaved(true);
-
-        ConsultationEntity saved =
-                consultationRepo.save(consultation);
-
-        return mapToResponse(saved);
     }
 
     @Override
@@ -160,130 +180,168 @@ public class ConsultationServiceImpl implements ConsultationService {
     public ConsultationResponse completeConsultation(
             UUID consultationId,
             String remarks) {
+        try {
+            if (consultationId == null) {
+                throw new IllegalArgumentException("Consultation Id is required");
+            }
 
-        UUID hospitalId = requireCurrentHospital();
+            UUID hospitalId = requireCurrentHospital();
 
-        ConsultationEntity consultation =
-                consultationRepo
-                        .findByIdAndAppointmentHospitalId(
-                                consultationId,
-                                hospitalId
-                        )
-                        .orElseThrow(() ->
-                                new IllegalArgumentException(
-                                        "Consultation not found"
-                                ));
+            ConsultationEntity consultation =
+                    consultationRepo
+                            .findByIdAndAppointmentHospitalId(
+                                    consultationId,
+                                    hospitalId
+                            )
+                            .orElseThrow(() ->
+                                    new IllegalArgumentException(
+                                            "Consultation not found"
+                                    ));
 
-        validateDoctorAccess(
-                consultation,
-                hospitalId
-        );
-
-        if (consultation.getStatus()
-                == ConsultationEntity.ConsultationStatus.COMPLETED) {
-
-            throw new IllegalArgumentException(
-                    "Consultation is already completed"
+            validateDoctorAccess(
+                    consultation,
+                    hospitalId
             );
-        }
 
-        if (!consultation.isVisitSaved()) {
-            throw new IllegalArgumentException(
-                    "Save the visit before completing the consultation"
+            if (consultation.getStatus()
+                    == ConsultationEntity.ConsultationStatus.COMPLETED) {
+
+                throw new IllegalArgumentException(
+                        "Consultation is already completed"
+                );
+            }
+
+            if (!consultation.isVisitSaved()) {
+                throw new IllegalArgumentException(
+                        "Save the visit before completing the consultation"
+                );
+            }
+
+            consultation.setStatus(
+                    ConsultationEntity.ConsultationStatus.COMPLETED
             );
+
+            consultation.setEndTime(
+                    LocalDateTime.now()
+            );
+
+            if (remarks != null && !remarks.trim().isEmpty()) {
+                consultation.setRemarks(remarks.trim());
+            }
+
+            ConsultationEntity saved =
+                    consultationRepo.save(consultation);
+
+            AppointmentRequest updateAppointmentRequest =
+                    new AppointmentRequest();
+
+            updateAppointmentRequest.setAppointmentStatus(
+                    AppointmentEntity.AppointmentStatus.COMPLETED
+            );
+
+            appointmentService.updateAppointment(
+                    consultation.getAppointment().getId(),
+                    updateAppointmentRequest
+            );
+
+            if (consultation.getPatient() != null && consultation.getPatient().getAccount() != null) {
+                String docName = consultation.getDoctor() != null && consultation.getDoctor().getAccount() != null
+                        ? consultation.getDoctor().getAccount().getFirstName()
+                        : "Doctor";
+                notificationService.createNotification(
+                        consultation.getPatient().getAccount(),
+                        "Consultation Completed",
+                        "Your consultation with " + docName + " has been completed.",
+                        NotificationType.CONSULTATION_COMPLETED
+                );
+            }
+
+            return mapToResponse(saved);
+        } catch (AccessDeniedException | IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            String msg = e.getMessage() != null && !e.getMessage().isBlank()
+                    ? e.getMessage()
+                    : "Unable to complete consultation";
+            throw new RuntimeException(msg, e);
         }
-
-        consultation.setStatus(
-                ConsultationEntity.ConsultationStatus.COMPLETED
-        );
-
-        consultation.setEndTime(
-                LocalDateTime.now()
-        );
-
-        if (remarks != null && !remarks.trim().isEmpty()) {
-            consultation.setRemarks(remarks.trim());
-        }
-
-        ConsultationEntity saved =
-                consultationRepo.save(consultation);
-
-        AppointmentRequest updateAppointmentRequest =
-                new AppointmentRequest();
-
-        updateAppointmentRequest.setAppointmentStatus(
-                AppointmentEntity.AppointmentStatus.COMPLETED
-        );
-
-        appointmentService.updateAppointment(
-                consultation.getAppointment().getId(),
-                updateAppointmentRequest
-        );
-
-        notificationService.createNotification(
-                consultation.getPatient().getAccount(),
-                "Consultation Completed",
-                "Your consultation with "
-                        + consultation.getDoctor()
-                        .getAccount()
-                        .getFirstName()
-                        + " has been completed.",
-                NotificationType.CONSULTATION_COMPLETED
-        );
-
-        return mapToResponse(saved);
     }
 
     @Override
     @Transactional(readOnly = true)
     public ConsultationResponse getConsultationById(UUID id) {
+        try {
+            if (id == null) {
+                throw new IllegalArgumentException("Consultation Id is required");
+            }
 
-        UUID hospitalId = requireCurrentHospital();
+            UUID hospitalId = requireCurrentHospital();
 
-        ConsultationEntity consultation =
-                consultationRepo
-                        .findByIdAndAppointmentHospitalId(
-                                id,
-                                hospitalId
-                        )
-                        .orElseThrow(() ->
-                                new IllegalArgumentException(
-                                        "Consultation not found"
-                                ));
+            ConsultationEntity consultation =
+                    consultationRepo
+                            .findByIdAndAppointmentHospitalId(
+                                    id,
+                                    hospitalId
+                            )
+                            .orElseThrow(() ->
+                                    new IllegalArgumentException(
+                                            "Consultation not found"
+                                    ));
 
-        validateAccess(
-                consultation,
-                hospitalId
-        );
+            validateAccess(
+                    consultation,
+                    hospitalId
+            );
 
-        return mapToResponse(consultation);
+            return mapToResponse(consultation);
+        } catch (AccessDeniedException | IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            String msg = e.getMessage() != null && !e.getMessage().isBlank()
+                    ? e.getMessage()
+                    : "Unable to fetch consultation";
+            throw new RuntimeException(msg, e);
+        }
     }
 
     @Override
     @Transactional(readOnly = true)
     public ConsultationResponse getConsultationByAppointmentId(
             UUID appointmentId) {
+        try {
+            if (appointmentId == null) {
+                throw new IllegalArgumentException("Appointment Id is required");
+            }
 
-        UUID hospitalId = requireCurrentHospital();
+            UUID hospitalId = requireCurrentHospital();
 
-        ConsultationEntity consultation =
-                consultationRepo
-                        .findByAppointmentIdAndAppointmentHospitalId(
-                                appointmentId,
-                                hospitalId
-                        )
-                        .orElseThrow(() ->
-                                new IllegalArgumentException(
-                                        "Consultation not found for appointment"
-                                ));
+            ConsultationEntity consultation =
+                    consultationRepo
+                            .findByAppointmentIdAndAppointmentHospitalId(
+                                    appointmentId,
+                                    hospitalId
+                            )
+                            .orElseThrow(() ->
+                                    new IllegalArgumentException(
+                                            "Consultation not found for appointment"
+                                    ));
 
-        validateAccess(
-                consultation,
-                hospitalId
-        );
+            validateAccess(
+                    consultation,
+                    hospitalId
+            );
 
-        return mapToResponse(consultation);
+            return mapToResponse(consultation);
+        } catch (AccessDeniedException | IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            String msg = e.getMessage() != null && !e.getMessage().isBlank()
+                    ? e.getMessage()
+                    : "Unable to fetch consultation for appointment";
+            throw new RuntimeException(msg, e);
+        }
     }
+
 
     private UUID requireCurrentHospital() {
 

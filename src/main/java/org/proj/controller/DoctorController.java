@@ -15,12 +15,14 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/doctors")
-
+@RequestMapping({"/api/doctors", "/doctors"})
 public class DoctorController {
 
     @Autowired
     private DoctorService doctorService;
+
+    @Autowired
+    private org.proj.service.DoctorHospitalAffiliationService affiliationService;
 
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'DOCTOR')")
@@ -78,6 +80,20 @@ public class DoctorController {
                         size));
     }
 
+    @GetMapping("/department/{departmentId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DOCTOR', 'RECEPTIONIST', 'PATIENT')")
+    public ResponseEntity<java.util.List<DoctorResponse>> getDoctorsByDepartment(
+            @PathVariable UUID departmentId) {
+        return ResponseEntity.ok(doctorService.getDoctorsByDepartment(departmentId));
+    }
+
+    @GetMapping("/hospital/{hospitalId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DOCTOR', 'RECEPTIONIST', 'PATIENT')")
+    public ResponseEntity<java.util.List<DoctorResponse>> getDoctorsByHospital(
+            @PathVariable UUID hospitalId) {
+        return ResponseEntity.ok(doctorService.getDoctorsByHospital(hospitalId));
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'DOCTOR', 'RECEPTIONIST', 'PATIENT')")
     public ResponseEntity<DoctorResponse> getDoctorById(
@@ -119,4 +135,90 @@ public class DoctorController {
         return ResponseEntity.ok("Doctor profile deactivated successfully");
     }
 
+    @PutMapping("/active-hospital/{hospitalId}")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'ADMIN')")
+    public ResponseEntity<java.util.Map<String, Object>> switchActiveHospital(
+            @PathVariable UUID hospitalId,
+            @RequestParam(required = false) UUID doctorId) {
+        org.proj.entity.UserEntity currentUser = org.proj.security.SecurityUtils.getCurrentUser();
+        UUID effectiveDoctorId = doctorId;
+        if (effectiveDoctorId == null) {
+            org.proj.entity.DoctorEntity doctor = doctorService.findDoctorEntityByAccountId(currentUser.getId())
+                    .orElseThrow(() -> new jakarta.persistence.EntityNotFoundException("Doctor profile not found for user"));
+            effectiveDoctorId = doctor.getId();
+        }
+        doctorService.switchActiveHospital(effectiveDoctorId, hospitalId);
+        return ResponseEntity.ok(java.util.Map.of(
+                "message", "Active duty hospital updated successfully",
+                "activeHospitalId", hospitalId
+        ));
+    }
+
+    @GetMapping("/my-affiliations")
+    @PreAuthorize("hasAnyRole('DOCTOR', 'ADMIN')")
+    public ResponseEntity<java.util.List<org.proj.dto.DoctorAffiliationResponse>> getMyAffiliations(
+            @RequestParam(required = false) UUID doctorId) {
+        org.proj.entity.UserEntity currentUser = org.proj.security.SecurityUtils.getCurrentUser();
+        UUID effectiveDoctorId = doctorId;
+        if (effectiveDoctorId == null) {
+            org.proj.entity.DoctorEntity doctor = doctorService.findDoctorEntityByAccountId(currentUser.getId())
+                    .orElseThrow(() -> new jakarta.persistence.EntityNotFoundException("Doctor profile not found for user"));
+            effectiveDoctorId = doctor.getId();
+        }
+        return ResponseEntity.ok(doctorService.getDoctorAffiliations(effectiveDoctorId));
+    }
+
+    @GetMapping("/{id}/affiliations")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DOCTOR', 'RECEPTIONIST')")
+    public ResponseEntity<java.util.List<org.proj.dto.DoctorAffiliationResponse>> getDoctorAffiliations(
+            @PathVariable UUID id) {
+        return ResponseEntity.ok(doctorService.getDoctorAffiliations(id));
+    }
+
+    @PostMapping("/{id}/affiliations")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<org.proj.dto.DoctorAffiliationResponse> addOrUpdateAffiliation(
+            @PathVariable UUID id,
+            @Valid @RequestBody org.proj.dto.DoctorAffiliationRequest request) {
+        return ResponseEntity.ok(doctorService.addOrUpdateAffiliation(id, request));
+    }
+
+    @DeleteMapping("/affiliations/{affiliationId}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<java.util.Map<String, String>> removeAffiliation(
+            @PathVariable UUID affiliationId) {
+        doctorService.removeAffiliation(affiliationId);
+        return ResponseEntity.ok(java.util.Map.of("message", "Affiliation removed successfully"));
+    }
+
+    // --- Doctor Affiliation Request & Admin Review Endpoints ---
+
+    @PostMapping("/affiliation-requests")
+    @PreAuthorize("hasRole('DOCTOR')")
+    public ResponseEntity<org.proj.dto.DoctorAffiliationApplicationResponse> submitAffiliationRequest(
+            @Valid @RequestBody org.proj.dto.DoctorAffiliationApplicationRequest request) {
+        return new ResponseEntity<>(affiliationService.submitAffiliationRequest(request), HttpStatus.CREATED);
+    }
+
+    @GetMapping("/my-affiliation-requests")
+    @PreAuthorize("hasRole('DOCTOR')")
+    public ResponseEntity<java.util.List<org.proj.dto.DoctorAffiliationApplicationResponse>> getMyAffiliationRequests() {
+        return ResponseEntity.ok(affiliationService.getMyAffiliationRequests());
+    }
+
+    @GetMapping("/admin/affiliation-requests")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<java.util.List<org.proj.dto.DoctorAffiliationApplicationResponse>> getPendingRequestsForAdmin(
+            @RequestParam(required = false) UUID hospitalId,
+            @RequestParam(required = false) org.proj.entity.DoctorAffiliationRequestEntity.RequestStatus status) {
+        return ResponseEntity.ok(affiliationService.getPendingRequestsForAdmin(hospitalId, status));
+    }
+
+    @PutMapping("/admin/affiliation-requests/{requestId}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<org.proj.dto.DoctorAffiliationApplicationResponse> reviewAffiliationRequest(
+            @PathVariable UUID requestId,
+            @Valid @RequestBody org.proj.dto.ReviewAffiliationRequest review) {
+        return ResponseEntity.ok(affiliationService.reviewAffiliationRequest(requestId, review));
+    }
 }

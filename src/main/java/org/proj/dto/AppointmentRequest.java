@@ -56,5 +56,6 @@ public class AppointmentRequest {
 
     private ConsultationMode consultationMode;
 
+    @jakarta.validation.constraints.Size(max = 500, message = "Remarks cannot exceed 500 characters")
     private String remarks;
 }

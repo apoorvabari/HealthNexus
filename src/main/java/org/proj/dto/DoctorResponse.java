@@ -50,4 +50,20 @@ public class DoctorResponse {
     private LocalDateTime verifiedAt;
 
     private String message;
+
+    public java.util.Map<String, Object> getUser() {
+        String fName = "";
+        String lName = "";
+        if (accountName != null && !accountName.isBlank()) {
+            String[] parts = accountName.trim().split("\\s+", 2);
+            fName = parts[0];
+            lName = parts.length > 1 ? parts[1] : "";
+        }
+        return java.util.Map.of(
+                "id", accountId != null ? accountId.toString() : "",
+                "firstName", fName,
+                "lastName", lName,
+                "fullName", accountName != null ? accountName : "Doctor"
+        );
+    }
 }

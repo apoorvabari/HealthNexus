@@ -11,6 +11,7 @@ import org.proj.dto.PageResponse;
 import org.proj.dto.PasswordResetRequest;
 import org.proj.dto.RegisterRequest;
 import org.proj.dto.RegisterResponse;
+import org.proj.dto.TwoFactorVerifyRequest;
 import org.proj.dto.UserFilterRequest;
 import org.proj.entity.UserEntity;
 import org.proj.service.UserService;
@@ -219,8 +220,70 @@ public class UserController {
         );
     }
 
+    @PostMapping("/google-login")
+    public ResponseEntity<LoginResponse> googleLogin(
+            @Valid @RequestBody org.proj.dto.GoogleLoginRequest request) {
+
+        return ResponseEntity.ok(
+                userService.googleLogin(request)
+        );
+    }
+
+    @PostMapping("/verify-reset-token")
+    public ResponseEntity<java.util.Map<String, Object>> verifyResetToken(
+            @Valid @RequestBody org.proj.dto.VerifyResetTokenRequest request) {
+
+        boolean valid = userService.verifyResetToken(request.getToken());
+
+        return ResponseEntity.ok(
+                java.util.Map.of(
+                        "valid", valid,
+                        "message", valid ? "Reset token is valid." : "Invalid or expired reset token."
+                )
+        );
+    }
+
     @GetMapping("/captcha")
     public ResponseEntity<CaptchaResponse> getCaptcha() {
         return ResponseEntity.ok(userService.generateCaptcha());
+    }
+
+    @PutMapping("/2fa")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<java.util.Map<String, Object>> toggleTwoFactor(
+            Authentication authentication,
+            @RequestBody java.util.Map<String, Boolean> request) {
+
+        UserEntity userDetails = (UserEntity) authentication.getPrincipal();
+        boolean enabled = Boolean.TRUE.equals(request.get("enabled"));
+
+        userService.setTwoFactorEnabled(userDetails.getId(), enabled);
+
+        return ResponseEntity.ok(java.util.Map.of(
+                "twoFactorEnabled", enabled,
+                "message", enabled ? "Two-Factor Authentication enabled successfully." : "Two-Factor Authentication disabled successfully."
+        ));
+    }
+
+    @PostMapping("/verify-2fa")
+    public ResponseEntity<LoginResponse> verifyTwoFactor(
+            @Valid @RequestBody TwoFactorVerifyRequest request) {
+
+        return ResponseEntity.ok(
+                userService.verifyTwoFactor(request)
+        );
+    }
+
+    @PostMapping("/resend-2fa")
+    public ResponseEntity<java.util.Map<String, String>> resendTwoFactor(
+            @RequestParam String email) {
+
+        userService.resendTwoFactorOtp(email);
+
+        return ResponseEntity.ok(
+                java.util.Map.of(
+                        "message", "A new verification code has been sent to your email."
+                )
+        );
     }
 }

@@ -6,6 +6,8 @@ import org.proj.dto.DoctorResponse;
 import org.proj.entity.DoctorEntity;
 
 import java.util.UUID;
+import java.util.List;
+import java.util.Optional;
 
 import org.proj.dto.PageResponse;
 import org.springframework.data.domain.Page;
@@ -15,6 +17,10 @@ public interface DoctorService {
     DoctorResponse createDoctor(DoctorRequest request);
 
     DoctorResponse getDoctorById(UUID id);
+
+    List<DoctorResponse> getDoctorsByDepartment(UUID departmentId);
+
+    List<DoctorResponse> getDoctorsByHospital(UUID hospitalId);
 
     PageResponse<DoctorResponse> getAllDoctors(String search, int page, int size, boolean isAdmin);
 
@@ -46,13 +52,17 @@ public interface DoctorService {
 
     DoctorEntity findDoctorById(UUID doctorId);
 
+    java.util.Optional<DoctorEntity> findDoctorByIdOrAccountId(UUID id);
+
     DoctorEntity findDoctorByIdAndHospitalId(UUID doctorId, UUID hospitalId);
+
+    java.util.Optional<DoctorEntity> findLockedByIdAndHospitalId(UUID doctorId, UUID hospitalId);
 
     DoctorResponse getDoctorByAccountId(UUID accountId);
 
-    java.util.Optional<DoctorEntity> findDoctorEntityByAccountId(UUID accountId);
+    Optional<DoctorEntity> findDoctorEntityByAccountId(UUID accountId);
 
-    java.util.Optional<DoctorEntity> findDoctorByAccountUsername(String username);
+    Optional<DoctorEntity> findDoctorByAccountUsername(String username);
 
     void save(DoctorEntity doctor);
 
@@ -65,4 +75,16 @@ public interface DoctorService {
     long countDoctorsByDepartment(UUID departmentId);
 
     long countDoctorsByDepartmentAndStatus(UUID departmentId, DoctorEntity.DoctorStatus status);
+
+    long countByHospitalId(UUID hospitalId);
+
+    long countByHospitalIdAndVerificationStatus(UUID hospitalId, DoctorEntity.VerificationStatus verificationStatus);
+
+    void switchActiveHospital(UUID doctorId, UUID targetHospitalId);
+
+    List<org.proj.dto.DoctorAffiliationResponse> getDoctorAffiliations(UUID doctorId);
+
+    org.proj.dto.DoctorAffiliationResponse addOrUpdateAffiliation(UUID doctorId, org.proj.dto.DoctorAffiliationRequest request);
+
+    void removeAffiliation(UUID affiliationId);
 }

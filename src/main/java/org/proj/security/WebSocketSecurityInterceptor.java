@@ -30,6 +30,9 @@ public class WebSocketSecurityInterceptor implements ChannelInterceptor {
     private static final String NOTIFICATION_TOPIC_PREFIX =
             "/topic/notifications/";
 
+    private static final String CHAT_TOPIC_PREFIX =
+            "/topic/chat/";
+
     private static final String WS_HOSPITAL_ATTRIBUTE =
             "HEALTHNEXUS_WS_HOSPITAL_ID";
 
@@ -83,6 +86,7 @@ public class WebSocketSecurityInterceptor implements ChannelInterceptor {
 
         if (StompCommand.SUBSCRIBE.equals(command)) {
             validateNotificationSubscription(accessor);
+            validateChatSubscription(accessor);
             validateDoctorPresenceSubscription(accessor);
             validateQueueSubscription(accessor);
             return message;
@@ -308,6 +312,45 @@ public class WebSocketSecurityInterceptor implements ChannelInterceptor {
         }
     }
 
+    private void validateChatSubscription(
+            StompHeaderAccessor accessor) {
+
+        String destination = accessor.getDestination();
+
+        if (destination == null
+                || !destination.startsWith(CHAT_TOPIC_PREFIX)) {
+            return;
+        }
+
+        Authentication authentication = getAuthentication(accessor);
+        UserEntity currentUser = getCurrentUser(authentication);
+
+        String requestedUserId = destination.substring(
+                CHAT_TOPIC_PREFIX.length()
+        );
+
+        final UUID requestedChatUserId;
+
+        try {
+            requestedChatUserId = UUID.fromString(
+                    requestedUserId
+            );
+        } catch (IllegalArgumentException e) {
+            throw new AccessDeniedException(
+                    "Invalid chat topic"
+            );
+        }
+
+        if (currentUser.getId() == null
+                || !currentUser.getId().equals(
+                requestedChatUserId)) {
+
+            throw new AccessDeniedException(
+                    "You are not authorized to subscribe to this chat topic"
+            );
+        }
+    }
+
     private void validateDoctorPresenceSubscription(
             StompHeaderAccessor accessor) {
 
@@ -448,6 +491,12 @@ public class WebSocketSecurityInterceptor implements ChannelInterceptor {
         if (destination.startsWith(NOTIFICATION_TOPIC_PREFIX)) {
             throw new AccessDeniedException(
                     "Client notification publishing is not allowed"
+            );
+        }
+
+        if (destination.startsWith(CHAT_TOPIC_PREFIX)) {
+            throw new AccessDeniedException(
+                    "Client direct chat publishing is not allowed"
             );
         }
 

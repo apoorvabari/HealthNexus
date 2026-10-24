@@ -43,7 +43,7 @@ public class UserEntity implements UserDetails {
     @Column(nullable = false, unique = true)
     private String email;
 
-    @Column(nullable = false)
+    @Column
     private String phoneNumber;
 
     @Column
@@ -74,6 +74,20 @@ public class UserEntity implements UserDetails {
     @Builder.Default
     @Column(nullable = false)
     private Long tokenVersion = 0L;
+
+    @Builder.Default
+    @Column(name = "two_factor_enabled")
+    private Boolean twoFactorEnabled = false;
+
+    @Column(name = "two_factor_otp")
+    private String twoFactorOtp;
+
+    @Column(name = "two_factor_otp_expiry")
+    private LocalDateTime twoFactorOtpExpiry;
+
+    public Boolean getTwoFactorEnabled() {
+        return twoFactorEnabled != null && twoFactorEnabled;
+    }
 
     @PrePersist
     public void generateUserId() {
@@ -119,5 +133,24 @@ public class UserEntity implements UserDetails {
      */
     public String getAccountName() {
         return email;
+    }
+
+    /**
+     * Returns the combined full name of the user.
+     */
+    public String getFullName() {
+        StringBuilder sb = new StringBuilder();
+        if (firstName != null && !firstName.isBlank()) {
+            sb.append(firstName.trim());
+        }
+        if (middleName != null && !middleName.isBlank()) {
+            if (sb.length() > 0) sb.append(" ");
+            sb.append(middleName.trim());
+        }
+        if (lastName != null && !lastName.isBlank()) {
+            if (sb.length() > 0) sb.append(" ");
+            sb.append(lastName.trim());
+        }
+        return sb.toString();
     }
 }

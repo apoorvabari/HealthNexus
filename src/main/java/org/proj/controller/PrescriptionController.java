@@ -37,6 +37,21 @@ public class PrescriptionController {
         }
     }
 
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DOCTOR')")
+    public ResponseEntity<?> updatePrescription(@PathVariable UUID id, @Valid @RequestBody PrescriptionRequest request) {
+        try {
+            PrescriptionResponse response = prescriptionService.updatePrescription(id, request);
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            return buildErrorResponse(HttpStatus.BAD_REQUEST, e.getMessage());
+        } catch (AccessDeniedException e) {
+            return buildErrorResponse(HttpStatus.FORBIDDEN, e.getMessage());
+        } catch (Exception e) {
+            return buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "An error occurred while updating prescription");
+        }
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'DOCTOR', 'PATIENT')")
     public ResponseEntity<?> getPrescriptionById(@PathVariable UUID id) {

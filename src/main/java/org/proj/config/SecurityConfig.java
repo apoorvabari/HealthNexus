@@ -50,13 +50,19 @@ public class SecurityConfig {
                                 .securityMatcher(
                                                 "/api/users/register",
                                                 "/api/users/login",
+                                                "/api/users/google-login",
                                                 "/api/users/reset-password",
                                                 "/api/users/forgot-password",
+                                                "/api/users/verify-reset-token",
                                                 "/api/users/verify-email",
                                                 "/api/users/resend-verification",
+                                                "/api/users/verify-2fa",
+                                                "/api/users/resend-2fa",
                                                 "/api/users/captcha",
                                                 "/api/hospitals/public",
-                                                "/api/departments/public")
+                                                "/api/departments/public",
+                                                "/ws-healthnexus",
+                                                "/ws-healthnexus/**")
                                 .cors(Customizer.withDefaults())
                                 .csrf(csrf -> csrf.disable())
                                 .authorizeHttpRequests(auth -> auth
@@ -105,7 +111,7 @@ public class SecurityConfig {
                 }
 
                 List<String> origins = Arrays.stream(allowedOrigins.split(","))
-                                .map(String::trim)
+                                .map(s -> s.trim())
                                 .filter(origin -> !origin.isEmpty())
                                 .collect(Collectors.toList());
 

@@ -25,6 +25,7 @@ import org.proj.service.NotificationService;
 import org.proj.service.PatientConsentService;
 import org.proj.service.PatientService;
 import org.proj.service.ReceptionistService;
+import org.proj.service.DoctorHospitalAffiliationService;
 import org.proj.service.TenantContextService;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
@@ -51,6 +52,7 @@ public class AppointmentServiceImpl implements AppointmentService {
     private final NotificationService notificationService;
     private final PatientConsentService patientConsentService;
     private final TenantContextService tenantContextService;
+    private final DoctorHospitalAffiliationService affiliationService;
 
     @Override
     @Transactional
@@ -59,6 +61,10 @@ public class AppointmentServiceImpl implements AppointmentService {
             UserEntity currentUser = SecurityUtils.getCurrentUser();
 
             UUID currentHospitalId = tenantContextService.getCurrentUserHospitalId();
+
+            if (currentHospitalId == null && SecurityUtils.isPatient() && request.getHospitalId() != null) {
+                currentHospitalId = request.getHospitalId();
+            }
 
             if (currentHospitalId == null) {
                 throw new AccessDeniedException("Hospital context is required");
@@ -85,14 +91,65 @@ public class AppointmentServiceImpl implements AppointmentService {
                         "Appointment time is required for scheduled appointments");
             }
 
-            HospitalEntity hospital =
-                    hospitalService.findHospitalById(currentHospitalId);
+            DoctorEntity doctor =
+                    doctorService.findDoctorById(request.getDoctorId());
 
             DepartmentEntity department =
                     departmentService.findDepartmentById(request.getDepartmentId());
 
-            DoctorEntity doctor =
-                    doctorService.findDoctorById(request.getDoctorId());
+            HospitalEntity hospital =
+                    hospitalService.findHospitalById(request.getHospitalId());
+
+            // 1. Ensure Department belongs to the selected Hospital
+            if (department.getHospital() == null || !department.getHospital().getId().equals(hospital.getId())) {
+                throw new IllegalArgumentException("Department does not belong to the selected hospital");
+            }
+
+            // 2. Active Duty Location Interception: Check if doctor is physically active at another hospital
+            java.util.Optional<org.proj.entity.DoctorHospitalAffiliationEntity> activeDutyOpt =
+                    affiliationService.findActiveDutyAffiliation(doctor.getId());
+
+            if (activeDutyOpt.isPresent()) {
+                org.proj.entity.DoctorHospitalAffiliationEntity activeAffiliation = activeDutyOpt.get();
+                UUID activeHospId = activeAffiliation.getHospital().getId();
+
+                if (!activeHospId.equals(hospital.getId())) {
+                    java.util.Optional<org.proj.entity.ReceptionistEntity> recOpt =
+                            receptionistRepo.findByHospitalId(hospital.getId()).stream().findFirst();
+
+                    String recPhone = recOpt.map(r -> r.getAccount() != null ? r.getAccount().getPhoneNumber() : null)
+                            .orElse(hospital.getPhoneNumber());
+                    String recEmail = recOpt.map(r -> r.getAccount() != null ? r.getAccount().getEmail() : null)
+                            .orElse(hospital.getEmail());
+
+                    String docName = doctor.getAccount() != null ? doctor.getAccount().getFullName() : "Doctor";
+
+                    throw new org.proj.exception.DoctorLocationConflictException(
+                            org.proj.dto.DoctorLocationConflictResponse.builder()
+                                    .errorCode("DOCTOR_LOCATION_MISMATCH")
+                                    .message("Dr. " + docName + " is currently on active duty at "
+                                            + activeAffiliation.getHospital().getHospitalName()
+                                            + ", not " + hospital.getHospitalName() + ".")
+                                    .doctorId(doctor.getId())
+                                    .doctorName(docName)
+                                    .requestedHospitalId(hospital.getId())
+                                    .requestedHospitalName(hospital.getHospitalName())
+                                    .activeHospitalId(activeAffiliation.getHospital().getId())
+                                    .activeHospitalName(activeAffiliation.getHospital().getHospitalName())
+                                    .activeDepartmentId(activeAffiliation.getDepartment().getId())
+                                    .activeDepartmentName(activeAffiliation.getDepartment().getDepartmentName())
+                                    .receptionistPhone(recPhone)
+                                    .receptionistEmail(recEmail)
+                                    .build()
+                    );
+                }
+            }
+
+            // 3. Fallback check for single-hospital setups: Ensure doctor belongs to selected hospital if no affiliations exist
+            boolean hasAffiliationAtRequested = affiliationService.findAffiliation(doctor.getId(), hospital.getId()).isPresent();
+            if (!hasAffiliationAtRequested && doctor.getHospital() != null && !doctor.getHospital().getId().equals(hospital.getId())) {
+                throw new IllegalArgumentException("Doctor does not belong to the selected hospital");
+            }
 
             PatientEntity patient =
                     patientService.findPatientById(request.getPatientId());
@@ -179,6 +236,16 @@ public class AppointmentServiceImpl implements AppointmentService {
                 }
             }
 
+            // For single-hospital doctors without separate affiliation, align if matching
+            if (doctor.getHospital() != null && !hasAffiliationAtRequested) {
+                currentHospitalId = doctor.getHospital().getId();
+                hospital = doctor.getHospital();
+            }
+
+            if (doctor.getDepartment() != null && !hasAffiliationAtRequested) {
+                department = doctor.getDepartment();
+            }
+
             if (department.getHospital() == null
                     || !currentHospitalId.equals(
                     department.getHospital().getId())) {
@@ -188,13 +255,20 @@ public class AppointmentServiceImpl implements AppointmentService {
                 );
             }
 
-            if (doctor.getHospital() == null
+            if (!hasAffiliationAtRequested && (doctor.getHospital() == null
                     || !currentHospitalId.equals(
-                    doctor.getHospital().getId())) {
+                    doctor.getHospital().getId()))) {
 
                 throw new AccessDeniedException(
                         "Doctor does not belong to your hospital"
                 );
+            }
+
+            if (doctor.getAccount() != null
+                    && (Boolean.FALSE.equals(doctor.getAccount().getIsActive())
+                    || Boolean.TRUE.equals(doctor.getAccount().getIsDeleted()))) {
+                throw new IllegalArgumentException(
+                        "This doctor is currently blocked and unavailable for booking appointments.");
             }
 
             if (doctor.getVerificationStatus() != DoctorEntity.VerificationStatus.APPROVED
@@ -203,18 +277,21 @@ public class AppointmentServiceImpl implements AppointmentService {
                         "Doctor is not currently available for appointment booking");
             }
 
-            if (doctor.getDepartment() == null
-                    || !doctor.getDepartment().getId()
-                    .equals(department.getId())) {
+            UUID targetDeptId = department.getId();
+            boolean doctorMatchesDept = (doctor.getDepartment() != null && doctor.getDepartment().getId().equals(targetDeptId))
+                    || affiliationService.findAffiliation(doctor.getId(), hospital.getId())
+                            .map(aff -> aff.getDepartment() != null && aff.getDepartment().getId().equals(targetDeptId))
+                            .orElse(false);
 
+            if (!doctorMatchesDept) {
                 throw new IllegalArgumentException(
                         "Doctor does not belong to the selected department"
                 );
             }
 
-            if (patient.getHospital() == null
+            if (!SecurityUtils.isPatient() && (patient.getHospital() == null
                     || !currentHospitalId.equals(
-                    patient.getHospital().getId())) {
+                    patient.getHospital().getId()))) {
 
                 throw new AccessDeniedException(
                         "Patient does not belong to your hospital"
@@ -283,8 +360,7 @@ public class AppointmentServiceImpl implements AppointmentService {
 
         } catch (Exception e) {
             throw new RuntimeException(
-                    "Unable to book appointment.",
-                    e
+                    "Unable to book appointment.", e
             );
         }
     }
@@ -388,8 +464,7 @@ public class AppointmentServiceImpl implements AppointmentService {
 
         } catch (Exception e) {
             throw new RuntimeException(
-                    "Unable to fetch appointment.",
-                    e
+                    "Unable to fetch appointment.", e
             );
         }
     }
@@ -420,8 +495,7 @@ public class AppointmentServiceImpl implements AppointmentService {
 
         } catch (Exception e) {
             throw new RuntimeException(
-                    "Unable to fetch appointment list.",
-                    e
+                    "Unable to fetch appointment list.", e
             );
         }
     }
@@ -1162,20 +1236,10 @@ public class AppointmentServiceImpl implements AppointmentService {
                         "Patient Id is required"
                 );
             }
-
-            UUID hospitalId =
-                    requireCurrentHospital();
-
             UserEntity currentUser =
                     SecurityUtils.getCurrentUser();
 
-            PatientEntity targetPatient = patientService.findPatientById(patientId);
-            if (targetPatient.getHospital() == null || !targetPatient.getHospital().getId().equals(hospitalId)) {
-                throw new AccessDeniedException("Patient does not belong to your hospital");
-            }
-
             if (SecurityUtils.isPatient()) {
-
                 PatientEntity patient =
                         patientService.findPatientById(
                                 patientId
@@ -1190,6 +1254,20 @@ public class AppointmentServiceImpl implements AppointmentService {
                             "You are not authorized to view these appointments"
                     );
                 }
+
+                return appointmentRepo
+                        .findByPatientId(patientId)
+                        .stream()
+                        .map(appointmentMapper::toResponse)
+                        .toList();
+            }
+
+            UUID hospitalId =
+                    requireCurrentHospital();
+
+            PatientEntity targetPatient = patientService.findPatientById(patientId);
+            if (targetPatient.getHospital() == null || !targetPatient.getHospital().getId().equals(hospitalId)) {
+                throw new AccessDeniedException("Patient does not belong to your hospital");
             }
 
             return appointmentRepo
@@ -1283,7 +1361,7 @@ public class AppointmentServiceImpl implements AppointmentService {
                                             != AppointmentEntity.AppointmentStatus.CANCELLED
                             )
                             .map(
-                                    AppointmentEntity::getAppointmentTime
+                                    a -> a.getAppointmentTime()
                             )
                             .toList();
 
@@ -1439,6 +1517,18 @@ public class AppointmentServiceImpl implements AppointmentService {
                         patientId,
                         hospitalId
                 );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public long countByHospitalId(UUID hospitalId) {
+        return appointmentRepo.countByHospitalId(hospitalId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public long countByAppointmentDateAndHospitalId(LocalDate date, UUID hospitalId) {
+        return appointmentRepo.countByAppointmentDateAndHospitalId(date, hospitalId);
     }
 
     private void notifyAppointmentBooked(AppointmentEntity appointment) {

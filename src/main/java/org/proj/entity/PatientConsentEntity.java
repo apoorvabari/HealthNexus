@@ -9,7 +9,7 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "patient_consent", uniqueConstraints = @UniqueConstraint(columnNames = {"patient_id", "consent_type"}))
+@Table(name = "patient_consent")
 @Data
 @Builder
 @NoArgsConstructor
@@ -39,6 +39,18 @@ public class PatientConsentEntity {
     @ToString.Exclude
     @EqualsAndHashCode.Exclude
     private PatientEntity patient;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "doctor_id")
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    private DoctorEntity doctor;
+
+    @Column(name = "scope", length = 100)
+    private String scope;
+
+    @Column(name = "version", length = 20)
+    private String version;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "consent_type", nullable = false, length = 50)

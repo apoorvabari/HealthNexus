@@ -41,6 +41,13 @@ public class DepartmentController {
                 departmentService.getPublicDepartments(hospitalId, search, page, size));
     }
 
+    @GetMapping("/hospital/{hospitalId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DOCTOR', 'RECEPTIONIST', 'PATIENT')")
+    public ResponseEntity<java.util.List<DepartmentResponse>> getDepartmentsByHospital(
+            @PathVariable UUID hospitalId) {
+        return ResponseEntity.ok(departmentService.getDepartmentsByHospital(hospitalId));
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'DOCTOR', 'RECEPTIONIST', 'PATIENT')")
     public ResponseEntity<DepartmentResponse> getDepartmentById(

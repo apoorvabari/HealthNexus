@@ -130,15 +130,25 @@ public class HospitalServiceImpl implements HospitalService {
     @Transactional(readOnly = true)
     @Cacheable("publicHospitals")
     public List<PublicHospitalResponse> getPublicHospitals() {
-        return hospitalRepo.findPublicHospitals()
-                .stream()
-                .map(hospital -> PublicHospitalResponse.builder()
-                        .id(hospital.getId())
-                        .hospitalName(hospital.getHospitalName())
-                        .hospitalCode(hospital.getHospitalCode())
-                        .build())
-                .toList();
+        try {
+            List<HospitalEntity> publicHospitals = hospitalRepo.findPublicHospitals();
+            return publicHospitals != null
+                    ? publicHospitals.stream()
+                            .map(hospital -> PublicHospitalResponse.builder()
+                                    .id(hospital.getId())
+                                    .hospitalName(hospital.getHospitalName())
+                                    .hospitalCode(hospital.getHospitalCode())
+                                    .build())
+                            .toList()
+                    : List.of();
+        } catch (Exception e) {
+            String msg = e.getMessage() != null && !e.getMessage().isBlank()
+                    ? e.getMessage()
+                    : "Unable to fetch public hospitals";
+            throw new RuntimeException(msg, e);
+        }
     }
+
 
     @Override
     public HospitalResponse getHospitalById(UUID id) {
@@ -374,9 +384,11 @@ public class HospitalServiceImpl implements HospitalService {
                 );
             }
 
-            if (!tenantContextService
-                    .hasCurrentUserHospitalAccess(id)) {
+            boolean isAdmin = SecurityUtils.getCurrentUser() != null
+                    && SecurityUtils.getCurrentUser().getRole() != null
+                    && "ADMIN".equalsIgnoreCase(SecurityUtils.getCurrentUser().getRole().getRoleName().trim());
 
+            if (!isAdmin && !tenantContextService.hasCurrentUserHospitalAccess(id)) {
                 throw new AccessDeniedException(
                         "You are not authorized to deactivate this hospital"
                 );
@@ -408,29 +420,64 @@ public class HospitalServiceImpl implements HospitalService {
     @Override
     public HospitalEntity findHospitalById(
             UUID hospitalId) {
-
-        return hospitalRepo.findById(hospitalId)
-                .orElseThrow(() ->
-                        new IllegalArgumentException(
-                                "Hospital not found"
-                        ));
+        try {
+            if (hospitalId == null) {
+                throw new IllegalArgumentException("Hospital Id is required");
+            }
+            return hospitalRepo.findById(hospitalId)
+                    .orElseThrow(() ->
+                            new IllegalArgumentException(
+                                    "Hospital not found"
+                            ));
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            String msg = e.getMessage() != null && !e.getMessage().isBlank()
+                    ? e.getMessage()
+                    : "Unable to find hospital";
+            throw new RuntimeException(msg, e);
+        }
     }
 
     @Override
     public HospitalEntity findPublicHospitalById(
             UUID hospitalId) {
-
-        return hospitalRepo.findPublicHospitalById(hospitalId)
-                .orElseThrow(() ->
-                        new IllegalArgumentException(
-                                "Selected hospital is not available for public onboarding"
-                        ));
+        try {
+            if (hospitalId == null) {
+                throw new IllegalArgumentException("Hospital Id is required");
+            }
+            return hospitalRepo.findPublicHospitalById(hospitalId)
+                    .orElseThrow(() ->
+                            new IllegalArgumentException(
+                                    "Selected hospital is not available for public onboarding"
+                            ));
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            String msg = e.getMessage() != null && !e.getMessage().isBlank()
+                    ? e.getMessage()
+                    : "Unable to find public hospital";
+            throw new RuntimeException(msg, e);
+        }
     }
 
     @Override
     public void save(HospitalEntity hospital) {
-        hospitalRepo.save(hospital);
+        try {
+            if (hospital == null) {
+                throw new IllegalArgumentException("Hospital cannot be null");
+            }
+            hospitalRepo.save(hospital);
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            String msg = e.getMessage() != null && !e.getMessage().isBlank()
+                    ? e.getMessage()
+                    : "Unable to save hospital";
+            throw new RuntimeException(msg, e);
+        }
     }
+
 
     @Override
     public long count() {
@@ -485,5 +532,11 @@ public class HospitalServiceImpl implements HospitalService {
                 "HN%03d",
                 count + 1
         );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public long countByIdAndVerificationStatus(UUID hospitalId, HospitalEntity.VerificationStatus status) {
+        return hospitalRepo.countByIdAndVerificationStatus(hospitalId, status);
     }
 }

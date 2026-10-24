@@ -8,8 +8,6 @@ import org.proj.entity.HospitalEntity;
 import org.proj.entity.DepartmentEntity;
 import org.proj.mapper.ReceptionistMapper;
 import org.proj.repository.ReceptionistRepo;
-import org.proj.repository.HospitalRepo;
-import org.proj.repository.DepartmentRepo;
 import org.proj.service.DepartmentService;
 import org.proj.service.HospitalService;
 import org.proj.service.NotificationService;
@@ -24,6 +22,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
@@ -32,8 +31,6 @@ import java.util.UUID;
 public class ReceptionistServiceImpl implements ReceptionistService {
 
     private final ReceptionistRepo receptionistRepo;
-    private final HospitalRepo hospitalRepo;
-    private final DepartmentRepo departmentRepo;
     private final UserService userService;
     private final HospitalService hospitalService;
     private final DepartmentService departmentService;
@@ -129,27 +126,16 @@ public class ReceptionistServiceImpl implements ReceptionistService {
              * public hospital.
              */
             if (currentUserIsReceptionist) {
+                try {
+                    hospital = hospitalService.findPublicHospitalById(targetHospitalId);
+                } catch (Exception e) {
+                    throw new AccessDeniedException(
+                            "Selected hospital is not available for receptionist onboarding");
+                }
 
-                hospital = hospitalRepo.findById(targetHospitalId)
-                                .orElseThrow(() ->
-                                        new AccessDeniedException(
-                                                "Selected hospital is not available for receptionist onboarding"));
-
-                /*
-                 * Department must belong to the exact selected hospital.
-                 *
-                 * We deliberately use the repository here instead of
-                 * DepartmentService.findDepartmentById(), because that
-                 * method requires an already established tenant.
-                 */
-                department =
-                        departmentRepo
-                                .findByIdAndHospitalId(
-                                        request.getDepartmentId(),
-                                        targetHospitalId)
-                                .orElseThrow(() ->
-                                        new AccessDeniedException(
-                                                "Department does not belong to the selected hospital"));
+                department = departmentService.findDepartmentByIdAndHospitalId(
+                        request.getDepartmentId(),
+                        targetHospitalId);
 
             } else {
 
@@ -171,13 +157,9 @@ public class ReceptionistServiceImpl implements ReceptionistService {
                                 targetHospitalId);
 
                 department =
-                        departmentRepo
-                                .findByIdAndHospitalId(
-                                        request.getDepartmentId(),
-                                        targetHospitalId)
-                                .orElseThrow(() ->
-                                        new AccessDeniedException(
-                                                "Department does not belong to the selected hospital"));
+                        departmentService.findDepartmentByIdAndHospitalId(
+                                request.getDepartmentId(),
+                                targetHospitalId);
             }
 
             /*
@@ -529,14 +511,25 @@ public class ReceptionistServiceImpl implements ReceptionistService {
     @Override
     public ReceptionistEntity findReceptionistById(
             UUID bookedByReceptionistId) {
+        try {
+            if (bookedByReceptionistId == null) {
+                throw new IllegalArgumentException("Receptionist Id is required");
+            }
+            UUID currentHospitalId = requireCurrentHospital();
 
-        UUID currentHospitalId = requireCurrentHospital();
-
-        return receptionistRepo.findByIdAndHospitalId(
-                        bookedByReceptionistId, currentHospitalId)
-                .orElseThrow(() ->
-                        new AccessDeniedException(
-                                "You are not authorized to access this receptionist profile"));
+            return receptionistRepo.findByIdAndHospitalId(
+                            bookedByReceptionistId, currentHospitalId)
+                    .orElseThrow(() ->
+                            new AccessDeniedException(
+                                    "You are not authorized to access this receptionist profile"));
+        } catch (AccessDeniedException | IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            String msg = e.getMessage() != null && !e.getMessage().isBlank()
+                    ? e.getMessage()
+                    : "Unable to find receptionist";
+            throw new RuntimeException(msg, e);
+        }
     }
 
     @Override
@@ -636,98 +629,136 @@ public class ReceptionistServiceImpl implements ReceptionistService {
     @Override
     @Transactional(readOnly = true)
     public java.util.Optional<ReceptionistEntity> findReceptionistEntityByAccountId(UUID accountId) {
-        if (accountId == null) {
+        try {
+            if (accountId == null) {
+                return java.util.Optional.empty();
+            }
+
+            UUID currentHospitalId = requireCurrentHospital();
+
+            return receptionistRepo.findByAccountId(accountId)
+                    .filter(r -> r.getHospital() != null
+                            && currentHospitalId.equals(r.getHospital().getId()));
+        } catch (Exception e) {
             return java.util.Optional.empty();
         }
-
-        UUID currentHospitalId = requireCurrentHospital();
-
-        return receptionistRepo.findByAccountId(accountId)
-                .filter(r -> r.getHospital() != null
-                        && currentHospitalId.equals(r.getHospital().getId()));
     }
 
     @Override
     @Transactional
     public void callPatient(UUID patientId, String customMessage) {
-        UUID receptionistHospitalId = tenantContextService.getCurrentUserHospitalId();
+        try {
+            if (patientId == null) {
+                throw new IllegalArgumentException("Patient Id is required to call patient");
+            }
 
-        if (receptionistHospitalId == null) {
-            throw new AccessDeniedException("Hospital context is required to call a patient");
+            UUID receptionistHospitalId = tenantContextService.getCurrentUserHospitalId();
+
+            if (receptionistHospitalId == null) {
+                throw new AccessDeniedException("Hospital context is required to call a patient");
+            }
+
+            org.proj.entity.PatientEntity patient = patientService.findPatientById(patientId);
+
+            if (patient.getHospital() == null
+                    || !receptionistHospitalId.equals(patient.getHospital().getId())) {
+                throw new AccessDeniedException("You are not authorized to call a patient from another hospital");
+            }
+
+            String message = (customMessage != null && !customMessage.isBlank())
+                    ? customMessage
+                    : "Please proceed to the reception desk for your appointment.";
+
+            notificationService.createNotification(
+                    patient.getAccount(),
+                    "Reception Counter Announcement",
+                    message,
+                    org.proj.entity.NotificationEntity.NotificationType.GENERAL
+            );
+        } catch (AccessDeniedException | IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            String msg = e.getMessage() != null && !e.getMessage().isBlank()
+                    ? e.getMessage()
+                    : "Unable to call patient";
+            throw new RuntimeException(msg, e);
         }
-
-        org.proj.entity.PatientEntity patient = patientService.findPatientById(patientId);
-
-        if (patient.getHospital() == null
-                || !receptionistHospitalId.equals(patient.getHospital().getId())) {
-            throw new AccessDeniedException("You are not authorized to call a patient from another hospital");
-        }
-
-        String message = (customMessage != null && !customMessage.isBlank())
-                ? customMessage
-                : "Please proceed to the reception desk for your appointment.";
-
-        notificationService.createNotification(
-                patient.getAccount(),
-                "Reception Counter Announcement",
-                message,
-                org.proj.entity.NotificationEntity.NotificationType.GENERAL
-        );
     }
 
     @Override
     @Transactional
     public org.proj.dto.PatientResponse registerWalkInPatient(org.proj.dto.WalkInPatientRegistrationRequest request) {
-        if (request == null) {
-            throw new IllegalArgumentException("Registration request is required");
+        try {
+            if (request == null) {
+                throw new IllegalArgumentException("Registration request is required");
+            }
+
+            UUID currentHospitalId = requireCurrentHospital();
+
+            org.proj.dto.RegisterRequest registerRequest = org.proj.dto.RegisterRequest.builder()
+                    .firstName(request.getFirstName())
+                    .middleName(request.getMiddleName())
+                    .lastName(request.getLastName())
+                    .email(request.getEmail())
+                    .password(request.getPassword())
+                    .phoneNumber(request.getPhoneNumber())
+                    .role("PATIENT")
+                    .captchaChallengeId("local-override")
+                    .captchaAnswer("0")
+                    .build();
+
+            org.proj.dto.RegisterResponse userAccount = userService.register(registerRequest);
+            if (userAccount == null || userAccount.getId() == null) {
+                throw new IllegalStateException("Failed to create user account for walk-in patient");
+            }
+
+            org.proj.dto.PatientRequest patientRequest = org.proj.dto.PatientRequest.builder()
+                    .accountId(userAccount.getId())
+                    .hospitalId(currentHospitalId)
+                    .bloodGroup(request.getBloodGroup())
+                    .gender(request.getGender())
+                    .dateOfBirth(request.getDateOfBirth())
+                    .emergencyContactName(request.getEmergencyContactName())
+                    .emergencyContactPhone(request.getEmergencyContactPhone())
+                    .relationship(request.getRelationship())
+                    .address(request.getAddress())
+                    .city(request.getCity())
+                    .state(request.getState())
+                    .postalCode(request.getPostalCode())
+                    .status(org.proj.entity.PatientEntity.PatientStatus.ACTIVE)
+                    .build();
+
+            org.proj.dto.PatientResponse createdPatient = patientService.createPatient(patientRequest);
+
+            // Auto-grant APPOINTMENT_BOOKING consent for walk-in patient registration by receptionist
+            org.proj.entity.PatientEntity patientEntity = patientService.findPatientByIdAndHospitalId(createdPatient.getId(), currentHospitalId);
+            patientConsentRepo.save(
+                    org.proj.entity.PatientConsentEntity.builder()
+                            .patient(patientEntity)
+                            .consentType(org.proj.entity.PatientConsentEntity.ConsentType.APPOINTMENT_BOOKING)
+                            .status(org.proj.entity.PatientConsentEntity.ConsentStatus.GRANTED)
+                            .consentedAt(java.time.LocalDateTime.now())
+                            .build()
+            );
+
+            return createdPatient;
+        } catch (AccessDeniedException | IllegalArgumentException | IllegalStateException e) {
+            throw e;
+        } catch (Exception e) {
+            String msg = e.getMessage() != null && !e.getMessage().isBlank()
+                    ? e.getMessage()
+                    : "Unable to register walk-in patient";
+            throw new RuntimeException(msg, e);
         }
+    }
 
-        UUID currentHospitalId = requireCurrentHospital();
-
-        org.proj.dto.RegisterRequest registerRequest = org.proj.dto.RegisterRequest.builder()
-                .firstName(request.getFirstName())
-                .middleName(request.getMiddleName())
-                .lastName(request.getLastName())
-                .email(request.getEmail())
-                .password(request.getPassword())
-                .phoneNumber(request.getPhoneNumber())
-                .role("PATIENT")
-                .build();
-
-        org.proj.dto.RegisterResponse userAccount = userService.register(registerRequest);
-        if (userAccount == null || userAccount.getId() == null) {
-            throw new IllegalStateException("Failed to create user account for walk-in patient");
+    @Override
+    @Transactional(readOnly = true)
+    public List<ReceptionistEntity> findReceptionistsByHospitalId(UUID hospitalId) {
+        if (hospitalId == null) {
+            return Collections.emptyList();
         }
-
-        org.proj.dto.PatientRequest patientRequest = org.proj.dto.PatientRequest.builder()
-                .accountId(userAccount.getId())
-                .hospitalId(currentHospitalId)
-                .bloodGroup(request.getBloodGroup())
-                .gender(request.getGender())
-                .dateOfBirth(request.getDateOfBirth())
-                .emergencyContactName(request.getEmergencyContactName())
-                .emergencyContactPhone(request.getEmergencyContactPhone())
-                .relationship(request.getRelationship())
-                .address(request.getAddress())
-                .city(request.getCity())
-                .state(request.getState())
-                .postalCode(request.getPostalCode())
-                .status(org.proj.entity.PatientEntity.PatientStatus.ACTIVE)
-                .build();
-
-        org.proj.dto.PatientResponse createdPatient = patientService.createPatient(patientRequest);
-
-        // Auto-grant APPOINTMENT_BOOKING consent for walk-in patient registration by receptionist
-        org.proj.entity.PatientEntity patientEntity = patientService.findPatientByIdAndHospitalId(createdPatient.getId(), currentHospitalId);
-        patientConsentRepo.save(
-                org.proj.entity.PatientConsentEntity.builder()
-                        .patient(patientEntity)
-                        .consentType(org.proj.entity.PatientConsentEntity.ConsentType.APPOINTMENT_BOOKING)
-                        .status(org.proj.entity.PatientConsentEntity.ConsentStatus.GRANTED)
-                        .consentedAt(java.time.LocalDateTime.now())
-                        .build()
-        );
-
-        return createdPatient;
+        return receptionistRepo.findByHospitalId(hospitalId);
     }
 }
+

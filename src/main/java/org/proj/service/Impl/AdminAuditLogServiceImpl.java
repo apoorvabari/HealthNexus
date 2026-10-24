@@ -22,33 +22,70 @@ public class AdminAuditLogServiceImpl implements AdminAuditLogService {
     @Override
     @Transactional
     public void save(AdminAuditLogEntity log) {
+        try {
+            if (log == null) {
+                throw new IllegalArgumentException("Audit log cannot be null");
+            }
 
-        if (log == null) {
-            throw new IllegalArgumentException("Audit log cannot be null");
+            UUID hospitalId = requireCurrentHospitalId();
+
+            if (log.getHospital() == null
+                    || log.getHospital().getId() == null
+                    || !hospitalId.equals(log.getHospital().getId())) {
+
+                throw new AccessDeniedException(
+                        "Audit log hospital does not match current hospital"
+                );
+            }
+
+            adminAuditLogRepo.save(log);
+        } catch (AccessDeniedException | IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            String msg = e.getMessage() != null && !e.getMessage().isBlank()
+                    ? e.getMessage()
+                    : "Unable to save audit log";
+            throw new RuntimeException(msg, e);
         }
-
-        UUID hospitalId = requireCurrentHospitalId();
-
-        if (log.getHospital() == null
-                || log.getHospital().getId() == null
-                || !hospitalId.equals(log.getHospital().getId())) {
-
-            throw new AccessDeniedException(
-                    "Audit log hospital does not match current hospital"
-            );
-        }
-
-        adminAuditLogRepo.save(log);
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<AdminAuditLogEntity> findAll() {
-
-        UUID hospitalId = requireCurrentHospitalId();
-
-        return adminAuditLogRepo.findAllByHospitalId(hospitalId);
+        try {
+            UUID hospitalId = requireCurrentHospitalId();
+            return adminAuditLogRepo.findAllByHospitalId(hospitalId);
+        } catch (AccessDeniedException | IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            String msg = e.getMessage() != null && !e.getMessage().isBlank()
+                    ? e.getMessage()
+                    : "Unable to fetch audit logs";
+            throw new RuntimeException(msg, e);
+        }
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public org.springframework.data.domain.Page<AdminAuditLogEntity> searchLogs(
+            UUID hospitalId,
+            String search,
+            org.springframework.data.domain.Pageable pageable) {
+        try {
+            if (hospitalId == null) {
+                throw new IllegalArgumentException("Hospital ID is required to search logs");
+            }
+            return adminAuditLogRepo.searchLogs(hospitalId, search, pageable);
+        } catch (AccessDeniedException | IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            String msg = e.getMessage() != null && !e.getMessage().isBlank()
+                    ? e.getMessage()
+                    : "Unable to search audit logs";
+            throw new RuntimeException(msg, e);
+        }
+    }
+
 
     private UUID requireCurrentHospitalId() {
 

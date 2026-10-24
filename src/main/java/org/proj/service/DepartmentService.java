@@ -7,7 +7,7 @@ import org.proj.dto.DepartmentAnalyticsResponse;
 import org.proj.dto.DoctorResponse;
 
 import java.util.UUID;
-
+import java.util.List;
 import org.proj.dto.PageResponse;
 
 public interface DepartmentService {
@@ -15,6 +15,8 @@ public interface DepartmentService {
     DepartmentResponse createDepartment(DepartmentRequest request);
 
     DepartmentResponse getDepartmentById(UUID id);
+
+    List<DepartmentResponse> getDepartmentsByHospital(UUID hospitalId);
 
     PageResponse<DepartmentResponse> getAllDepartments(UUID hospitalId, String search, int page, int size);
 
@@ -32,6 +34,8 @@ public interface DepartmentService {
 
     DepartmentEntity findDepartmentById(UUID departmentId);
 
+    DepartmentEntity findDepartmentByIdAndHospitalId(UUID departmentId, UUID hospitalId);
+
     PageResponse<DoctorResponse> getDoctorsByDepartment(
             UUID departmentId,
             int page,
@@ -39,4 +43,6 @@ public interface DepartmentService {
 
     DepartmentAnalyticsResponse getDepartmentAnalytics(
             UUID departmentId);
+
+    java.util.Optional<DepartmentEntity> findFirstDepartment();
 }

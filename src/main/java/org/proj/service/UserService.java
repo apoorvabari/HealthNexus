@@ -12,15 +12,26 @@ import org.proj.dto.LoginRequest;
 import org.proj.dto.LoginResponse;
 import org.proj.dto.PageResponse;
 import org.proj.dto.CaptchaResponse;
+import org.proj.dto.TwoFactorVerifyRequest;
 import org.proj.entity.UserEntity;
 
 public interface UserService {
+
+	void setTwoFactorEnabled(UUID userId, boolean enabled);
+
+	LoginResponse verifyTwoFactor(TwoFactorVerifyRequest request);
+
+	void resendTwoFactorOtp(String email);
 
 	CaptchaResponse generateCaptcha();
 
 	RegisterResponse register(RegisterRequest request);
 
 	LoginResponse login(LoginRequest request);
+
+	LoginResponse googleLogin(org.proj.dto.GoogleLoginRequest request);
+
+	boolean verifyResetToken(String token);
 
 	RegisterResponse getUserById(UUID id);
 
@@ -57,4 +68,15 @@ public interface UserService {
     long countByIsDeletedFalse();
 
     long countByIsActiveTrueAndIsDeletedFalse();
+
+    long countByHospitalId(UUID hospitalId);
+
+    long countActiveByHospitalId(UUID hospitalId);
+
+    long countDeletedByHospitalId(UUID hospitalId);
+
+    boolean existsByIdAndHospitalId(UUID userId, UUID hospitalId);
+
+    List<UserEntity> findAllUsers();
 }
+

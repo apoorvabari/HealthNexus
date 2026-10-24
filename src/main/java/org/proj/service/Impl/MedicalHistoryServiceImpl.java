@@ -39,6 +39,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -54,190 +55,121 @@ public class MedicalHistoryServiceImpl implements MedicalHistoryService {
     private final MedicalRecordMapper medicalRecordMapper;
     private final PrescriptionMapper prescriptionMapper;
     private final TenantContextService tenantContextService;
+    private final org.proj.service.PatientConsentService patientConsentService;
 
     @Override
     @Transactional(readOnly = true)
-    public List<MedicalHistoryResponse> getPatientMedicalHistory(
-            UUID patientId) {
+    public List<MedicalHistoryResponse> getPatientMedicalHistory(UUID patientId) {
+        try {
+            UUID validPatientId = Optional.ofNullable(patientId)
+                    .orElseThrow(() -> new IllegalArgumentException("Patient ID is required"));
 
-        if (patientId == null) {
-            throw new IllegalArgumentException(
-                    "Patient ID is required"
+            UUID hospitalId = requireCurrentHospital();
+            UserEntity currentUser = requireCurrentUser();
+            String role = getRole(currentUser);
+
+            PatientEntity patient = patientRepo.findById(validPatientId)
+                    .orElseThrow(() -> new IllegalArgumentException("Patient not found"));
+
+            /*
+             * Important:
+             * First resolve the patient globally so that an existing patient
+             * belonging to another hospital results in 403 rather than 404.
+             */
+            validatePatientHospital(patient, hospitalId);
+            validatePatientAccess(patient, currentUser, role);
+
+            List<AppointmentEntity> appointments = appointmentRepo.findByPatientIdAndHospitalId(
+                    validPatientId,
+                    hospitalId
             );
-        }
 
-        UUID hospitalId = requireCurrentHospital();
-        UserEntity currentUser = requireCurrentUser();
-        String role = getRole(currentUser);
+            /*
+             * Doctors must have valid, unrevoked consent to access patient medical records.
+             * Enforces tenant-isolation and scope verification.
+             */
+            List<AppointmentEntity> filteredAppointments = Optional.of(role)
+                    .filter("DOCTOR"::equals)
+                    .map(r -> {
+                        DoctorEntity currentDoctor = findCurrentDoctor(currentUser, hospitalId);
 
-        PatientEntity patient = patientRepo.findById(patientId)
-                .orElseThrow(() ->
-                        new IllegalArgumentException(
-                                "Patient not found"
-                        ));
+                        patientConsentService.verifyConsentForDoctor(
+                                validPatientId,
+                                currentDoctor.getId(),
+                                org.proj.entity.PatientConsentEntity.ConsentType.MEDICAL_RECORD_SHARING,
+                                "MEDICAL_HISTORY"
+                        );
 
-        /*
-         * Important:
-         * First resolve the patient globally so that an existing patient
-         * belonging to another hospital results in 403 rather than 404.
-         */
-        validatePatientHospital(patient, hospitalId);
-        validatePatientAccess(patient, currentUser, role);
+                        return appointments.stream()
+                                .filter(appointment -> appointment.getDoctor() != null
+                                        && currentDoctor.getId().equals(appointment.getDoctor().getId()))
+                                .toList();
+                    })
+                    .orElse(appointments);
 
-        List<AppointmentEntity> appointments =
-                appointmentRepo.findByPatientIdAndHospitalId(
-                        patientId,
-                        hospitalId
-                );
-
-        /*
-         * Doctors may only see the medical history generated from their
-         * own appointments. This prevents a doctor from using the patientId
-         * path variable to access another doctor's clinical history.
-         */
-        if ("DOCTOR".equals(role)) {
-
-            DoctorEntity currentDoctor =
-                    findCurrentDoctor(
-                            currentUser,
-                            hospitalId
-                    );
-
-            appointments = appointments.stream()
-                    .filter(appointment ->
-                            appointment.getDoctor() != null
-                                    && currentDoctor.getId().equals(
-                                    appointment.getDoctor().getId()
-                            ))
+            List<AppointmentEntity> sortedAppointments = filteredAppointments.stream()
+                    .sorted(
+                            Comparator.comparing(
+                                    (AppointmentEntity a) -> a != null ? a.getAppointmentDate() : null,
+                                    Comparator.nullsLast(Comparator.naturalOrder())
+                            )
+                            .thenComparing(
+                                    (AppointmentEntity a) -> a != null ? a.getAppointmentTime() : null,
+                                    Comparator.nullsLast(Comparator.naturalOrder())
+                            )
+                            .reversed()
+                    )
                     .toList();
-        }
 
-        appointments = appointments.stream()
-                .sorted(
-                        Comparator
-                                .comparing(
-                                        AppointmentEntity::getAppointmentDate,
-                                        Comparator.nullsLast(
-                                                Comparator.naturalOrder()
-                                        )
-                                )
-                                .thenComparing(
-                                        AppointmentEntity::getAppointmentTime,
-                                        Comparator.nullsLast(
-                                                Comparator.naturalOrder()
-                                        )
-                                )
-                                .reversed()
-                )
-                .toList();
+            List<MedicalHistoryResponse> history = new ArrayList<>();
+            int visitNumber = 1;
 
-        List<MedicalHistoryResponse> history =
-                new ArrayList<>();
+            for (AppointmentEntity appointment : sortedAppointments) {
+                ConsultationEntity consultation = consultationRepo
+                        .findByAppointmentIdAndAppointmentHospitalId(appointment.getId(), hospitalId)
+                        .orElse(null);
 
-        int visitNumber = 1;
+                MedicalRecordEntity medicalRecord = medicalRecordRepo
+                        .findByAppointmentIdAndAppointmentHospitalId(appointment.getId(), hospitalId)
+                        .stream()
+                        .findFirst()
+                        .orElse(null);
 
-        for (AppointmentEntity appointment : appointments) {
+                List<PrescriptionEntity> prescriptions = prescriptionRepo
+                        .findByAppointmentIdAndAppointmentHospitalId(appointment.getId(), hospitalId);
 
-            /*
-             * Every child lookup is tenant-scoped through the appointment's
-             * hospital relationship.
-             */
-            ConsultationEntity consultation =
-                    consultationRepo
-                            .findByAppointmentIdAndAppointmentHospitalId(
-                                    appointment.getId(),
-                                    hospitalId
-                            )
-                            .orElse(null);
+                if (consultation == null && medicalRecord == null && prescriptions.isEmpty()) {
+                    continue;
+                }
 
-            MedicalRecordEntity medicalRecord =
-                    medicalRecordRepo
-                            .findByAppointmentIdAndAppointmentHospitalId(
-                                    appointment.getId(),
-                                    hospitalId
-                            )
-                            .stream()
-                            .findFirst()
-                            .orElse(null);
+                DoctorEntity doctor = appointment.getDoctor();
 
-            List<PrescriptionEntity> prescriptions =
-                    prescriptionRepo
-                            .findByAppointmentIdAndAppointmentHospitalId(
-                                    appointment.getId(),
-                                    hospitalId
-                            );
-
-            /*
-             * An appointment becomes medical history only when clinical
-             * information exists for that visit.
-             */
-            if (consultation == null
-                    && medicalRecord == null
-                    && prescriptions.isEmpty()) {
-                continue;
+                history.add(
+                        MedicalHistoryResponse.builder()
+                                .visitNumber(visitNumber++)
+                                .visitId(consultation != null ? consultation.getId() : null)
+                                .appointmentId(appointment != null ? appointment.getId() : null)
+                                .appointmentNumber(appointment != null ? appointment.getAppointmentNumber() : null)
+                                .visitDate(appointment != null ? appointment.getAppointmentDate() : null)
+                                .doctorId(doctor != null ? doctor.getId() : null)
+                                .doctorName(getDoctorName(doctor))
+                                .doctorSpecialization(doctor != null ? doctor.getSpecialization() : null)
+                                .consultation(consultation != null ? this.mapConsultation(consultation) : null)
+                                .medicalRecord(medicalRecord != null ? medicalRecordMapper.toResponse(medicalRecord) : null)
+                                .prescriptions(prescriptions != null ? prescriptions.stream().map(prescriptionMapper::toResponse).toList() : List.of())
+                                .build()
+                );
             }
 
-            DoctorEntity doctor =
-                    appointment.getDoctor();
-
-            history.add(
-                    MedicalHistoryResponse.builder()
-                            .visitNumber(visitNumber++)
-                            .visitId(
-                                    consultation != null
-                                            ? consultation.getId()
-                                            : null
-                            )
-                            .appointmentId(
-                                    appointment.getId()
-                            )
-                            .appointmentNumber(
-                                    appointment.getAppointmentNumber()
-                            )
-                            .visitDate(
-                                    appointment.getAppointmentDate()
-                            )
-                            .doctorId(
-                                    doctor != null
-                                            ? doctor.getId()
-                                            : null
-                            )
-                            .doctorName(
-                                    getDoctorName(doctor)
-                            )
-                            .doctorSpecialization(
-                                    doctor != null
-                                            ? doctor.getSpecialization()
-                                            : null
-                            )
-                            .consultation(
-                                    consultation != null
-                                            ? mapConsultation(
-                                            consultation
-                                    )
-                                            : null
-                            )
-                            .medicalRecord(
-                                    medicalRecord != null
-                                            ? medicalRecordMapper
-                                            .toResponse(
-                                                    medicalRecord
-                                            )
-                                            : null
-                            )
-                            .prescriptions(
-                                    prescriptions.stream()
-                                            .map(
-                                                    prescriptionMapper
-                                                            ::toResponse
-                                            )
-                                            .toList()
-                            )
-                            .build()
-            );
+            return history;
+        } catch (AccessDeniedException | IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            String msg = e.getMessage() != null && !e.getMessage().isBlank()
+                    ? e.getMessage()
+                    : "Unable to retrieve patient medical history";
+            throw new RuntimeException(msg, e);
         }
-
-        return history;
     }
 
     @Override
@@ -540,224 +472,71 @@ public class MedicalHistoryServiceImpl implements MedicalHistoryService {
     }
 
     private UUID requireCurrentHospital() {
-
-        UUID hospitalId =
-                tenantContextService
-                        .getCurrentUserHospitalId();
-
-        if (hospitalId == null) {
-
-            throw new AccessDeniedException(
-                    "Tenant hospital context is required"
-            );
-        }
-
+        UUID hospitalId = tenantContextService != null ? tenantContextService.getCurrentUserHospitalId() : null;
+        if (hospitalId == null) throw new AccessDeniedException("Tenant hospital context is required");
         return hospitalId;
     }
 
     private UserEntity requireCurrentUser() {
-
-        UserEntity currentUser =
-                SecurityUtils.getCurrentUser();
-
-        if (currentUser == null) {
-
-            throw new AccessDeniedException(
-                    "Unauthenticated user"
-            );
-        }
-
+        UserEntity currentUser = SecurityUtils.getCurrentUser();
+        if (currentUser == null) throw new AccessDeniedException("Unauthenticated user");
         return currentUser;
     }
 
     private String getRole(UserEntity user) {
-
-        if (user.getRole() == null
-                || user.getRole().getRoleName() == null
-                || user.getRole()
-                .getRoleName()
-                .isBlank()) {
-
-            throw new AccessDeniedException(
-                    "User role is not available"
-            );
+        if (user == null || user.getRole() == null || user.getRole().getRoleName() == null || user.getRole().getRoleName().isBlank()) {
+            throw new AccessDeniedException("User role is not available");
         }
-
-        return user.getRole()
-                .getRoleName()
-                .trim()
-                .toUpperCase(Locale.ROOT);
+        return user.getRole().getRoleName().trim().toUpperCase(Locale.ROOT);
     }
 
-    private void validatePatientHospital(
-            PatientEntity patient,
-            UUID hospitalId) {
-
-        if (patient.getHospital() == null
-                || patient.getHospital().getId() == null) {
-
-            throw new AccessDeniedException(
-                    "Patient hospital context is missing"
-            );
-        }
-
-        if (!hospitalId.equals(
-                patient.getHospital().getId())) {
-
-            throw new AccessDeniedException(
-                    "You are not authorized to access this patient's medical history"
-            );
+    private void validatePatientHospital(PatientEntity patient, UUID hospitalId) {
+        if (patient == null || patient.getHospital() == null || !hospitalId.equals(patient.getHospital().getId())) {
+            throw new AccessDeniedException("You are not authorized to access this patient's medical history");
         }
     }
 
-    private void validatePatientAccess(
-            PatientEntity patient,
-            UserEntity currentUser,
-            String role) {
-
-        if ("PATIENT".equals(role)) {
-
-            if (patient.getAccount() == null
-                    || patient.getAccount().getId() == null
-                    || !currentUser.getId().equals(
-                    patient.getAccount().getId())) {
-
-                throw new AccessDeniedException(
-                        "You are not authorized to view this patient's medical history"
-                );
-            }
-
-            return;
+    private void validatePatientAccess(PatientEntity patient, UserEntity currentUser, String role) {
+        if (role == null || (!"ADMIN".equals(role) && !"DOCTOR".equals(role) && !"PATIENT".equals(role))) {
+            throw new AccessDeniedException("You are not authorized to view medical history");
         }
-
-        if (!"ADMIN".equals(role)
-                && !"DOCTOR".equals(role)) {
-
-            throw new AccessDeniedException(
-                    "You are not authorized to view medical history"
-            );
+        if ("PATIENT".equals(role) && (patient == null || patient.getAccount() == null || currentUser == null || !currentUser.getId().equals(patient.getAccount().getId()))) {
+            throw new AccessDeniedException("You are not authorized to view this patient's medical history");
         }
     }
 
-    private DoctorEntity findCurrentDoctor(
-            UserEntity currentUser,
-            UUID hospitalId) {
-
-        return doctorRepo
-                .findByAccountId(currentUser.getId())
-                .filter(doctor ->
-                        doctor.getHospital() != null
-                                && hospitalId.equals(
-                                doctor.getHospital().getId()
-                        ))
-                .orElseThrow(() ->
-                        new AccessDeniedException(
-                                "Doctor profile not found"
-                        ));
+    private DoctorEntity findCurrentDoctor(UserEntity currentUser, UUID hospitalId) {
+        return doctorRepo.findByAccountId(currentUser.getId())
+                .filter(doctor -> doctor.getHospital() != null && hospitalId.equals(doctor.getHospital().getId()))
+                .orElseThrow(() -> new AccessDeniedException("Doctor profile not found"));
     }
 
     private ConsultationResponse mapConsultation(
             ConsultationEntity entity) {
 
         return ConsultationResponse.builder()
-                .id(entity.getId())
-                .appointmentId(
-                        entity.getAppointment() != null
-                                ? entity.getAppointment().getId()
-                                : null
-                )
-                .doctorId(
-                        entity.getDoctor() != null
-                                ? entity.getDoctor().getId()
-                                : null
-                )
-                .doctorName(
-                        getDoctorName(
-                                entity.getDoctor()
-                        )
-                )
-                .patientId(
-                        entity.getPatient() != null
-                                ? entity.getPatient().getId()
-                                : null
-                )
-                .patientName(
-                        getPatientName(
-                                entity.getPatient()
-                        )
-                )
-                .status(
-                        entity.getStatus() != null
-                                ? entity.getStatus().name()
-                                : null
-                )
-                .startTime(
-                        entity.getStartTime()
-                )
-                .endTime(
-                        entity.getEndTime()
-                )
-                .remarks(
-                        entity.getRemarks()
-                )
-                .visitSaved(
-                        entity.isVisitSaved()
-                )
-                .createdAt(
-                        entity.getCreatedAt()
-                )
-                .updatedAt(
-                        entity.getUpdatedAt()
-                )
+                .id(entity != null ? entity.getId() : null)
+                .appointmentId(entity != null && entity.getAppointment() != null ? entity.getAppointment().getId() : null)
+                .doctorId(entity != null && entity.getDoctor() != null ? entity.getDoctor().getId() : null)
+                .doctorName(entity != null ? getDoctorName(entity.getDoctor()) : "")
+                .patientId(entity != null && entity.getPatient() != null ? entity.getPatient().getId() : null)
+                .patientName(entity != null ? getPatientName(entity.getPatient()) : "")
+                .status(entity != null && entity.getStatus() != null ? entity.getStatus().name() : null)
+                .startTime(entity != null ? entity.getStartTime() : null)
+                .endTime(entity != null ? entity.getEndTime() : null)
+                .remarks(entity != null ? entity.getRemarks() : null)
+                .visitSaved(entity != null && entity.isVisitSaved())
+                .createdAt(entity != null ? entity.getCreatedAt() : null)
+                .updatedAt(entity != null ? entity.getUpdatedAt() : null)
                 .build();
     }
 
-    private String getDoctorName(
-            DoctorEntity doctor) {
-
-        if (doctor == null
-                || doctor.getAccount() == null) {
-
-            return "";
-        }
-
-        String first =
-                safe(
-                        doctor.getAccount()
-                                .getFirstName()
-                );
-
-        String last =
-                safe(
-                        doctor.getAccount()
-                                .getLastName()
-                );
-
-        return (first + " " + last).trim();
+    private String getDoctorName(DoctorEntity doctor) {
+        return (doctor == null || doctor.getAccount() == null) ? "" : (safe(doctor.getAccount().getFirstName()) + " " + safe(doctor.getAccount().getLastName())).trim();
     }
 
-    private String getPatientName(
-            PatientEntity patient) {
-
-        if (patient == null
-                || patient.getAccount() == null) {
-
-            return "";
-        }
-
-        String first =
-                safe(
-                        patient.getAccount()
-                                .getFirstName()
-                );
-
-        String last =
-                safe(
-                        patient.getAccount()
-                                .getLastName()
-                );
-
-        return (first + " " + last).trim();
+    private String getPatientName(PatientEntity patient) {
+        return (patient == null || patient.getAccount() == null) ? "" : (safe(patient.getAccount().getFirstName()) + " " + safe(patient.getAccount().getLastName())).trim();
     }
 
     private String safe(Object value) {

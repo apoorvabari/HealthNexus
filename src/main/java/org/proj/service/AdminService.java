@@ -4,6 +4,10 @@ import org.proj.dto.*;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.Optional;
+
+import org.proj.entity.AdminEntity;
+
 
 public interface AdminService {
 
@@ -46,4 +50,12 @@ public interface AdminService {
             String search,
             int page,
             int size);
+
+    Optional<AdminEntity> findAdminEntityByAccountId(UUID accountId);
+
+    List<AdminEntity> findAdminsByHospitalId(UUID hospitalId);
+
+    List<UUID> getActiveHospitalIdsForAdmin(UUID accountId);
+
+    boolean existsByAccountIdAndHospitalId(UUID accountId, UUID hospitalId);
 }

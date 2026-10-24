@@ -21,6 +21,7 @@ public class DoctorVerificationRequest {
 
     private Boolean specializationVerified;
 
+    @jakarta.validation.constraints.Size(max = 500, message = "Verification remarks cannot exceed 500 characters")
     private String verificationRemarks;
     
 }

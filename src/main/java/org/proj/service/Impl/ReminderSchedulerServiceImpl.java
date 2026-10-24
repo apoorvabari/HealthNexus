@@ -46,18 +46,26 @@ public class ReminderSchedulerServiceImpl implements ReminderSchedulerService {
     )
     @Transactional
     public void processAppointmentReminders() {
-        ZoneId zoneId = ZoneId.of(appTimezone);
-        LocalDateTime now = LocalDateTime.now(zoneId);
-        int reminderMinutes = appointmentReminderMinutes > 0
-                ? appointmentReminderMinutes
-                : DEFAULT_APPOINTMENT_REMINDER_MINUTES;
+        try {
+            ZoneId zoneId = ZoneId.of(appTimezone);
+            LocalDateTime now = LocalDateTime.now(zoneId);
+            int reminderMinutes = appointmentReminderMinutes > 0
+                    ? appointmentReminderMinutes
+                    : DEFAULT_APPOINTMENT_REMINDER_MINUTES;
 
-        LocalDate today = now.toLocalDate();
-        LocalDate tomorrow = today.plusDays(1);
+            LocalDate today = now.toLocalDate();
+            LocalDate tomorrow = today.plusDays(1);
 
-        processAppointmentDate(today, now, reminderMinutes, zoneId);
-        processAppointmentDate(tomorrow, now, reminderMinutes, zoneId);
+            processAppointmentDate(today, now, reminderMinutes, zoneId);
+            processAppointmentDate(tomorrow, now, reminderMinutes, zoneId);
+        } catch (Exception e) {
+            String msg = e.getMessage() != null && !e.getMessage().isBlank()
+                    ? e.getMessage()
+                    : "Unable to process appointment reminders";
+            throw new RuntimeException(msg, e);
+        }
     }
+
 
     private void processAppointmentDate(
             LocalDate date,
@@ -124,61 +132,68 @@ public class ReminderSchedulerServiceImpl implements ReminderSchedulerService {
     )
     @Transactional
     public void processQueueReminders() {
-        ZoneId zoneId = ZoneId.of(appTimezone);
-        LocalDateTime startOfToday = LocalDate.now(zoneId).atStartOfDay();
+        try {
+            ZoneId zoneId = ZoneId.of(appTimezone);
+            LocalDateTime startOfToday = LocalDate.now(zoneId).atStartOfDay();
 
-        int patientsAheadLimit = Math.max(0, queuePatientsAheadLimit);
+            int patientsAheadLimit = Math.max(0, queuePatientsAheadLimit);
 
-        List<QueueEntity> waitingQueues =
-                queueRepo.findByCheckedInTimeAfterAndQueueStatusAndQueueReminderSentAtIsNull(
-                        startOfToday,
-                        QueueStatus.WAITING
-                );
+            List<QueueEntity> waitingQueues =
+                    queueRepo.findByCheckedInTimeAfterAndQueueStatusAndQueueReminderSentAtIsNull(
+                            startOfToday,
+                            QueueStatus.WAITING
+                    );
 
-        for (QueueEntity queue : waitingQueues) {
-            if (queue.getAppointment() == null
-                    || queue.getAppointment().getPatient() == null
-                    || queue.getAppointment().getPatient().getAccount() == null
-                    || queue.getDoctor() == null
-                    || queue.getDoctor().getId() == null
-                    || queue.getHospital() == null
-                    || queue.getHospital().getId() == null
-                    || queue.getQueueNumber() == null) {
-                continue;
+            for (QueueEntity queue : waitingQueues) {
+                if (queue.getAppointment() == null
+                        || queue.getAppointment().getPatient() == null
+                        || queue.getAppointment().getPatient().getAccount() == null
+                        || queue.getDoctor() == null
+                        || queue.getDoctor().getId() == null
+                        || queue.getHospital() == null
+                        || queue.getHospital().getId() == null
+                        || queue.getQueueNumber() == null) {
+                    continue;
+                }
+
+                long patientsAhead = queueRepo
+                        .findByDoctorIdAndHospitalIdAndCheckedInTimeAfterOrderByQueueNumberAsc(
+                                queue.getDoctor().getId(),
+                                queue.getHospital() != null ? queue.getHospital().getId() : null,
+                                startOfToday
+                        )
+                        .stream()
+                        .filter(other -> other.getQueueNumber() != null
+                                && queue.getQueueNumber() != null
+                                && other.getQueueNumber() < queue.getQueueNumber())
+                        .filter(other -> other.getQueueStatus() == QueueStatus.WAITING
+                                || other.getQueueStatus() == QueueStatus.CALLED
+                                || other.getQueueStatus() == QueueStatus.IN_CONSULTATION)
+                        .count();
+
+                if (patientsAhead > patientsAheadLimit) {
+                    continue;
+                }
+
+                notificationService.createNotification(
+                        queue.getAppointment().getPatient().getAccount(),
+                        "Queue Reminder",
+                        "Your queue token "
+                                + queue.getTokenNumber()
+                                + " is approaching. There are approximately "
+                                + patientsAhead
+                                + " patient(s) ahead of you.",
+                        NotificationType.QUEUE_REMINDER
+                    );
+
+                queue.setQueueReminderSentAt(LocalDateTime.now(zoneId));
+                queueRepo.save(queue);
             }
-
-            long patientsAhead = queueRepo
-                    .findByDoctorIdAndHospitalIdAndCheckedInTimeAfterOrderByQueueNumberAsc(
-                            queue.getDoctor().getId(),
-                            queue.getHospital() != null ? queue.getHospital().getId() : null,
-                            startOfToday
-                    )
-                    .stream()
-                    .filter(other -> other.getQueueNumber() != null
-                            && queue.getQueueNumber() != null
-                            && other.getQueueNumber() < queue.getQueueNumber())
-                    .filter(other -> other.getQueueStatus() == QueueStatus.WAITING
-                            || other.getQueueStatus() == QueueStatus.CALLED
-                            || other.getQueueStatus() == QueueStatus.IN_CONSULTATION)
-                    .count();
-
-            if (patientsAhead > patientsAheadLimit) {
-                continue;
-            }
-
-            notificationService.createNotification(
-                    queue.getAppointment().getPatient().getAccount(),
-                    "Queue Reminder",
-                    "Your queue token "
-                            + queue.getTokenNumber()
-                            + " is approaching. There are approximately "
-                            + patientsAhead
-                            + " patient(s) ahead of you.",
-                    NotificationType.QUEUE_REMINDER
-            );
-
-            queue.setQueueReminderSentAt(LocalDateTime.now(zoneId));
-            queueRepo.save(queue);
+        } catch (Exception e) {
+            String msg = e.getMessage() != null && !e.getMessage().isBlank()
+                    ? e.getMessage()
+                    : "Unable to process queue reminders";
+            throw new RuntimeException(msg, e);
         }
     }
 }

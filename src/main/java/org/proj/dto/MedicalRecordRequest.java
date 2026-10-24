@@ -25,8 +25,10 @@ public class MedicalRecordRequest {
     private UUID appointmentId;
 
     @NotBlank(message = "Diagnosis is required")
+    @jakarta.validation.constraints.Size(min = 2, max = 255, message = "Diagnosis must be between 2 and 255 characters")
     private String diagnosis;
 
+    @jakarta.validation.constraints.Size(max = 2000, message = "Notes cannot exceed 2000 characters")
     private String notes;
 
     @NotNull(message = "Record Date is required")

@@ -20,6 +20,8 @@ public interface DoctorRepo extends JpaRepository<DoctorEntity, UUID> {
 
         List<DoctorEntity> findByHospitalId(UUID hospitalId);
 
+        List<DoctorEntity> findByDepartmentId(UUID departmentId);
+
         Optional<DoctorEntity> findByIdAndHospitalId(UUID id, UUID hospitalId);
 
         @Lock(LockModeType.PESSIMISTIC_WRITE)
@@ -90,6 +92,7 @@ public interface DoctorRepo extends JpaRepository<DoctorEntity, UUID> {
         @Query("SELECT d FROM DoctorEntity d WHERE " +
                         "d.hospital.id = :hospitalId AND " +
                         "d.verificationStatus = 'APPROVED' AND d.status = 'ACTIVE' AND " +
+                        "d.account.isActive = true AND d.account.isDeleted = false AND " +
                         "(:search IS NULL OR :search = '' OR LOWER(d.account.firstName) LIKE LOWER(CONCAT('%', :search, '%')) " +
                         "OR LOWER(d.account.lastName) LIKE LOWER(CONCAT('%', :search, '%')) " +
                         "OR LOWER(d.specialization) LIKE LOWER(CONCAT('%', :search, '%')) " +
@@ -98,6 +101,7 @@ public interface DoctorRepo extends JpaRepository<DoctorEntity, UUID> {
 
         @Query("SELECT d FROM DoctorEntity d WHERE " +
                         "d.verificationStatus = 'APPROVED' AND d.status = 'ACTIVE' AND " +
+                        "d.account.isActive = true AND d.account.isDeleted = false AND " +
                         "(:search IS NULL OR :search = '' OR LOWER(d.account.firstName) LIKE LOWER(CONCAT('%', :search, '%')) "
                         +
                         "OR LOWER(d.account.lastName) LIKE LOWER(CONCAT('%', :search, '%')) " +
@@ -108,8 +112,10 @@ public interface DoctorRepo extends JpaRepository<DoctorEntity, UUID> {
         @Query("""
                         SELECT d
                         FROM DoctorEntity d
-                        WHERE d.verificationStatus = 'APPROVED'
+                        WHERE (d.verificationStatus = 'APPROVED' OR d.verificationStatus = 'PENDING')
                           AND d.status = 'ACTIVE'
+                          AND d.account.isActive = true
+                          AND d.account.isDeleted = false
 
                           AND (
                               :search IS NULL

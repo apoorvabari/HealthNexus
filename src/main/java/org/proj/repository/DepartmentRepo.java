@@ -11,9 +11,12 @@ import org.springframework.stereotype.Repository;
 import java.util.Collection;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.List;
 
 @Repository
 public interface DepartmentRepo extends JpaRepository<DepartmentEntity, UUID> {
+
+        List<DepartmentEntity> findByHospitalId(UUID hospitalId);
 
         Optional<DepartmentEntity> findByDepartmentCode(String departmentCode);
 

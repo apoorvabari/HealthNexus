@@ -22,22 +22,14 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         config.setApplicationDestinationPrefixes("/app");
     }
 
-    @org.springframework.beans.factory.annotation.Value("${app.cors.allowed-origins:}")
-    private String allowedOrigins;
-
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
-        String[] origins = java.util.Arrays.stream(allowedOrigins.split(","))
-                .map(String::trim)
-                .filter(s -> !s.isEmpty())
-                .toArray(String[]::new);
-
         registry.addEndpoint("/ws-healthnexus")
-                .setAllowedOrigins(origins)
+                .setAllowedOriginPatterns("*")
                 .withSockJS();
 
         registry.addEndpoint("/ws-healthnexus")
-                .setAllowedOrigins(origins);
+                .setAllowedOriginPatterns("*");
     }
 
     @Override

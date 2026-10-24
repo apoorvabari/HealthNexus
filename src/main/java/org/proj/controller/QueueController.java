@@ -75,4 +75,12 @@ public class QueueController {
             @PathVariable UUID id) {
         return ResponseEntity.ok(queueService.recallSkippedPatient(id));
     }
+
+    @PutMapping(path = {"/{id}/status", "/status/{id}"})
+    @PreAuthorize("hasAnyRole('ADMIN', 'DOCTOR', 'RECEPTIONIST')")
+    public ResponseEntity<QueueResponse> updateQueueStatus(
+            @PathVariable UUID id,
+            @RequestParam String status) {
+        return ResponseEntity.ok(queueService.updateQueueStatus(id, status));
+    }
 }

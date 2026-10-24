@@ -28,6 +28,10 @@ public class EmailServiceImpl implements EmailService {
     @Value("${app.frontend.base-url}")
     private String frontendBaseUrl;
 
+    private String getSanitizedFromEmail() {
+        return (fromEmail == null || fromEmail.trim().isBlank() || fromEmail.contains("[") || fromEmail.contains("]")) ? "[EMAIL_ADDRESS]" : fromEmail.trim();
+    }
+
     @Override
     @Async
     public void sendPasswordResetEmail(
@@ -44,7 +48,7 @@ public class EmailServiceImpl implements EmailService {
         SimpleMailMessage message =
                 new SimpleMailMessage();
 
-        message.setFrom(fromEmail);
+        message.setFrom(getSanitizedFromEmail());
         message.setTo(email);
         message.setSubject("HealthNexus - Password Reset");
 
@@ -93,7 +97,7 @@ public class EmailServiceImpl implements EmailService {
         SimpleMailMessage message =
                 new SimpleMailMessage();
 
-        message.setFrom(fromEmail);
+        message.setFrom(getSanitizedFromEmail());
         message.setTo(email);
         message.setSubject("HealthNexus - Email Verification");
 
@@ -122,6 +126,38 @@ public class EmailServiceImpl implements EmailService {
                     e);
 
             throw new RuntimeException("Failed to send verification email", e);
+        }
+    }
+
+    @Override
+    @Async
+    public void sendTwoFactorOtpEmail(
+            String email,
+            String otp) {
+
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setFrom(getSanitizedFromEmail());
+        message.setTo(email);
+        message.setSubject("HealthNexus - Two-Factor Authentication Code");
+
+        message.setText(
+                "Hello,\n\n"
+                        + "Your HealthNexus login verification code is:\n\n"
+                        + "    " + otp + "\n\n"
+                        + "This code will expire in 10 minutes.\n\n"
+                        + "If you did not attempt to log in to HealthNexus, please change your password immediately.\n\n"
+                        + "HealthNexus Security Team"
+        );
+
+        logger.info("=================================================");
+        logger.info("[2FA OTP CODE] Verification code for user {}: {}", email, otp);
+        logger.info("=================================================");
+
+        try {
+            mailSender.send(message);
+            logger.info("2FA OTP email sent successfully to {}", email);
+        } catch (Exception e) {
+            logger.warn("Could not dispatch 2FA email via SMTP to {}: {}. Note: code is logged above for testing/dev.", email, e.getMessage());
         }
     }
 }

@@ -22,6 +22,7 @@ public class PrescriptionRequest {
 
     private UUID medicalRecordId;
 
+    @jakarta.validation.constraints.Size(max = 1000, message = "Instructions cannot exceed 1000 characters")
     private String instructions;
 
     @NotEmpty(message = "At least one medicine is required")

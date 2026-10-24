@@ -11,4 +11,9 @@ public interface EmailService {
             String email,
             String token
     );
+
+    void sendTwoFactorOtpEmail(
+            String email,
+            String otp
+    );
 }

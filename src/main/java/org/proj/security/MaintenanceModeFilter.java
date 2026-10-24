@@ -74,7 +74,7 @@ public class MaintenanceModeFilter extends OncePerRequestFilter {
 
     private boolean isAuthenticationEndpoint(HttpServletRequest request) {
         String path = request.getRequestURI();
-        return path != null && path.startsWith("/api/users/login");
+        return path != null && (path.startsWith("/api/users/login") || path.startsWith("/api/users/google-login"));
     }
 
     private boolean isMaintenanceEnabled(HttpServletRequest request) {

@@ -66,9 +66,12 @@ public interface UserRepo extends JpaRepository<UserEntity, UUID> {
             :role IS NULL
             OR :role = ''
             OR UPPER(u.role.roleName) = UPPER(:role)
+            OR UPPER(u.role.roleName) = UPPER(CONCAT('ROLE_', :role))
+            OR UPPER(REPLACE(u.role.roleName, 'ROLE_', '')) = UPPER(:role)
         )
         AND (
-            EXISTS (
+            :hospitalId IS NULL
+            OR EXISTS (
                 SELECT 1
                 FROM AdminEntity a
                 WHERE a.account.id = u.id
@@ -91,6 +94,15 @@ public interface UserRepo extends JpaRepository<UserEntity, UUID> {
                 FROM PatientEntity p
                 WHERE p.account.id = u.id
                 AND p.hospital.id = :hospitalId
+            )
+            OR (
+                (UPPER(u.role.roleName) = 'PATIENT' OR UPPER(u.role.roleName) = 'ROLE_PATIENT')
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM PatientEntity p2
+                    WHERE p2.account.id = u.id
+                    AND p2.hospital.id <> :hospitalId
+                )
             )
         )
         AND (

@@ -25,5 +25,6 @@ public class RegisterResponse {
     private Boolean isDeleted;
     private LocalDateTime lastLogin;
     private String profilePicture;
+    private Boolean twoFactorEnabled;
     private String message;
 }

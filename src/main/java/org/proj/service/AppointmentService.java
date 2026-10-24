@@ -41,4 +41,8 @@ public interface AppointmentService {
     boolean existsByDoctorIdAndPatientId(UUID doctorId, UUID patientId);
 
     boolean existsByDoctorIdAndPatientIdAndHospitalId(UUID doctorId, UUID patientId, UUID hospitalId);
+
+    long countByHospitalId(UUID hospitalId);
+
+    long countByAppointmentDateAndHospitalId(java.time.LocalDate date, UUID hospitalId);
 }

@@ -22,4 +22,6 @@ public class LoginResponse {
     private String refreshToken;
     private java.time.LocalDateTime lastLogin;
     private String message;
+    private Boolean twoFactorRequired;
+    private String twoFactorEmail;
 }

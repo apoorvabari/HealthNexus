@@ -94,6 +94,7 @@ public class UserMapper {
                 .profilePicture(
                         user.getProfilePicture()
                 )
+                .twoFactorEnabled(user.getTwoFactorEnabled() != null && user.getTwoFactorEnabled())
                 .message("Success")
                 .build();
     }

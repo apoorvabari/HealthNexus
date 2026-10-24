@@ -13,6 +13,8 @@ public interface ReceptionistRepo extends JpaRepository<ReceptionistEntity, UUID
 
     List<ReceptionistEntity> findByHospitalId(UUID hospitalId);
 
+    Optional<ReceptionistEntity> findFirstByHospitalId(UUID hospitalId);
+
     Optional<ReceptionistEntity> findByIdAndHospitalId(UUID id, UUID hospitalId);
 
     boolean existsByEmployeeCodeAndHospitalId(String employeeCode, UUID hospitalId);

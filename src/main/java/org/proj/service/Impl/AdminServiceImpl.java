@@ -5,7 +5,6 @@ import org.proj.entity.*;
 import org.proj.mapper.DoctorMapper;
 import org.proj.mapper.HospitalMapper;
 import org.proj.mapper.UserMapper;
-import org.proj.repository.*;
 import org.proj.service.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.AccessDeniedException;
@@ -14,6 +13,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
+
+import org.proj.repository.AdminRepo;
 
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -23,12 +25,16 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.regex.Pattern;
 
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 
 @Service
 public class AdminServiceImpl implements AdminService {
+
+    @Autowired
+    private AdminRepo adminRepo;
 
     @Autowired
     private DoctorService doctorService;
@@ -40,16 +46,29 @@ public class AdminServiceImpl implements AdminService {
     private UserService userService;
 
     @Autowired
-    private AdminSystemSettingsRepo systemSettingsRepo;
+    private AdminSystemSettingsService systemSettingsService;
 
     @Autowired
-    private AdminAuditLogRepo auditLogRepo;
+    private PatientService patientService;
 
     @Autowired
-    private ObjectMapper objectMapper;
+    @Lazy
+    private AppointmentService appointmentService;
+
+    @Autowired
+    private DepartmentService departmentService;
+
+    @Autowired
+    private AdminAuditLogService auditLogService;
 
     @Autowired
     private TenantContextService tenantContextService;
+
+    @Autowired
+    private NotificationService notificationService;
+
+    @Autowired
+    private ObjectMapper objectMapper;
 
     @Autowired
     private DoctorMapper doctorMapper;
@@ -59,21 +78,6 @@ public class AdminServiceImpl implements AdminService {
 
     @Autowired
     private UserMapper userMapper;
-
-    @Autowired
-    private UserRepo userRepo;
-
-    @Autowired
-    private DoctorRepo doctorRepo;
-
-    @Autowired
-    private PatientRepo patientRepo;
-
-    @Autowired
-    private AppointmentRepo appointmentRepo;
-
-    @Autowired
-    private HospitalRepo hospitalRepo;
 
     // =========================================================
     // PRIVATE HELPERS
@@ -111,13 +115,13 @@ public class AdminServiceImpl implements AdminService {
     public AdminDashboardStatsResponse getDashboardStats() {
         UUID hospitalId = requireAdminHospital().getId();
 
-        long totalDoctors = doctorRepo.countByHospitalId(hospitalId);
-        long pendingDoctors = doctorRepo.countByHospitalIdAndVerificationStatus(hospitalId, DoctorEntity.VerificationStatus.PENDING);
-        long approvedDoctors = doctorRepo.countByHospitalIdAndVerificationStatus(hospitalId, DoctorEntity.VerificationStatus.APPROVED);
-        long rejectedDoctors = doctorRepo.countByHospitalIdAndVerificationStatus(hospitalId, DoctorEntity.VerificationStatus.REJECTED);
+        long totalDoctors = doctorService.countByHospitalId(hospitalId);
+        long pendingDoctors = doctorService.countByHospitalIdAndVerificationStatus(hospitalId, DoctorEntity.VerificationStatus.PENDING);
+        long approvedDoctors = doctorService.countByHospitalIdAndVerificationStatus(hospitalId, DoctorEntity.VerificationStatus.APPROVED);
+        long rejectedDoctors = doctorService.countByHospitalIdAndVerificationStatus(hospitalId, DoctorEntity.VerificationStatus.REJECTED);
 
-        long totalUsers = userRepo.countByHospitalId(hospitalId);
-        long activeUsers = userRepo.countActiveByHospitalId(hospitalId);
+        long totalUsers = userService.countByHospitalId(hospitalId);
+        long activeUsers = userService.countActiveByHospitalId(hospitalId);
 
         return AdminDashboardStatsResponse.builder()
                 .totalDoctors(totalDoctors)
@@ -125,12 +129,12 @@ public class AdminServiceImpl implements AdminService {
                 .approvedDoctors(approvedDoctors)
                 .rejectedDoctors(rejectedDoctors)
                 .totalHospitals(1)
-                .pendingHospitals(hospitalRepo.countByIdAndVerificationStatus(hospitalId, HospitalEntity.VerificationStatus.PENDING))
-                .approvedHospitals(hospitalRepo.countByIdAndVerificationStatus(hospitalId, HospitalEntity.VerificationStatus.APPROVED))
-                .rejectedHospitals(hospitalRepo.countByIdAndVerificationStatus(hospitalId, HospitalEntity.VerificationStatus.REJECTED))
+                .pendingHospitals(hospitalService.countByIdAndVerificationStatus(hospitalId, HospitalEntity.VerificationStatus.PENDING))
+                .approvedHospitals(hospitalService.countByIdAndVerificationStatus(hospitalId, HospitalEntity.VerificationStatus.APPROVED))
+                .rejectedHospitals(hospitalService.countByIdAndVerificationStatus(hospitalId, HospitalEntity.VerificationStatus.REJECTED))
                 .totalUsers(totalUsers)
                 .activeUsers(activeUsers)
-                .deletedUsers(userRepo.countDeletedByHospitalId(hospitalId))
+                .deletedUsers(userService.countDeletedByHospitalId(hospitalId))
                 .build();
     }
 
@@ -269,9 +273,45 @@ public class AdminServiceImpl implements AdminService {
         // Fix 3: resolve the admin's hospital first, then do a tenant-scoped lookup
         HospitalEntity adminHospital = requireAdminHospital();
         
-        DoctorEntity doctor = doctorService.findDoctorById(doctorId);
-        if (doctor.getHospital() == null || !doctor.getHospital().getId().equals(adminHospital.getId())) {
-            throw new AccessDeniedException("You are not authorized to manage this doctor");
+        DoctorEntity doctor = doctorService.findDoctorByIdOrAccountId(doctorId)
+                .orElseGet(() -> {
+                    // Check if doctorId corresponds to a UserEntity with DOCTOR role
+                    UserEntity user = null;
+                    try {
+                        user = userService.findUserById(doctorId);
+                    } catch (Exception ignored) {}
+
+                    if (user != null && user.getRole() != null && "DOCTOR".equalsIgnoreCase(user.getRole().getRoleName())) {
+                        DepartmentEntity defaultDept = departmentService.findFirstDepartment().orElse(null);
+                        DoctorEntity newDoc = DoctorEntity.builder()
+                                .account(user)
+                                .hospital(adminHospital)
+                                .department(defaultDept)
+                                .specialization("General Medicine")
+                                .qualification("MBBS")
+                                .experience(1)
+                                .consultationFee(java.math.BigDecimal.valueOf(100.00))
+                                .licenseNumber("LIC-" + user.getId().toString().substring(0, 8).toUpperCase())
+                                .status(DoctorEntity.DoctorStatus.INACTIVE)
+                                .verificationStatus(DoctorEntity.VerificationStatus.PENDING)
+                                .licenseVerified(false)
+                                .degreeVerified(false)
+                                .specializationVerified(false)
+                                .build();
+                        doctorService.save(newDoc);
+                        return newDoc;
+                    }
+                    throw new IllegalArgumentException("Doctor not found");
+                });
+
+        if (doctor.getHospital() != null && !doctor.getHospital().getId().equals(adminHospital.getId())) {
+            // Check if admin has access to doctor's hospital
+            if (!tenantContextService.hasCurrentUserHospitalAccess(doctor.getHospital().getId())) {
+                throw new AccessDeniedException("You are not authorized to manage this doctor");
+            }
+        } else if (doctor.getHospital() == null) {
+            // If doctor has no hospital assigned yet, link them to the current admin's active hospital
+            doctor.setHospital(adminHospital);
         }
 
         if (request == null || request.getVerificationStatus() == null) {
@@ -383,9 +423,15 @@ public class AdminServiceImpl implements AdminService {
     public DoctorResponse updateDoctorStatus(UUID doctorId, StatusUpdateRequest request, UUID adminId) {
         // Fix 3: tenant-scoped doctor lookup
         HospitalEntity adminHospital = requireAdminHospital();
-        DoctorEntity doctor = doctorService.findDoctorById(doctorId);
-        if (doctor.getHospital() == null || !doctor.getHospital().getId().equals(adminHospital.getId())) {
-            throw new AccessDeniedException("You are not authorized to manage this doctor");
+        DoctorEntity doctor = doctorService.findDoctorByIdOrAccountId(doctorId)
+                .orElseThrow(() -> new IllegalArgumentException("Doctor not found"));
+
+        if (doctor.getHospital() != null && !doctor.getHospital().getId().equals(adminHospital.getId())) {
+            if (!tenantContextService.hasCurrentUserHospitalAccess(doctor.getHospital().getId())) {
+                throw new AccessDeniedException("You are not authorized to manage this doctor");
+            }
+        } else if (doctor.getHospital() == null) {
+            doctor.setHospital(adminHospital);
         }
 
         try {
@@ -441,13 +487,33 @@ public class AdminServiceImpl implements AdminService {
     @Transactional
     public RegisterResponse toggleUserBlock(UUID userId, boolean block, UUID adminId) {
         HospitalEntity adminHospital = requireAdminHospital();
-        if (!userRepo.existsByIdAndHospitalId(userId, adminHospital.getId())) {
+        if (!userService.existsByIdAndHospitalId(userId, adminHospital.getId())) {
             throw new AccessDeniedException("User does not belong to the current hospital");
         }
         UserEntity user = userService.findUserById(userId);
 
         user.setIsActive(!block);
         userService.save(user);
+
+        // If the blocked/unblocked user is a doctor, synchronize doctor status and notify them immediately
+        if (user.getRole() != null && "DOCTOR".equalsIgnoreCase(user.getRole().getRoleName())) {
+            doctorService.findDoctorEntityByAccountId(user.getId()).ifPresent(doc -> {
+                doc.setStatus(block ? DoctorEntity.DoctorStatus.SUSPENDED : DoctorEntity.DoctorStatus.ACTIVE);
+                doctorService.save(doc);
+            });
+
+            String title = block ? "Account Blocked Alert" : "Account Unblocked";
+            String message = block
+                    ? "Your doctor account has been blocked by the hospital administration. You cannot accept new patient consultations or appointments until further notice."
+                    : "Your doctor account has been unblocked by the administration. You may now resume consultations and appointments.";
+
+            notificationService.createNotification(
+                    user,
+                    title,
+                    message,
+                    NotificationEntity.NotificationType.GENERAL
+            );
+        }
 
         String action = block ? "BLOCK_USER" : "UNBLOCK_USER";
         logAuditAction(action, "UserEntity", userId, adminId, "User account " + (block ? "blocked" : "unblocked"), adminHospital);
@@ -459,11 +525,11 @@ public class AdminServiceImpl implements AdminService {
     public AnalyticsResponse getPlatformAnalytics() {
         UUID hospitalId = requireAdminHospital().getId();
         return AnalyticsResponse.builder()
-                .totalDoctors(doctorRepo.countByHospitalId(hospitalId))
-                .totalPatients(patientRepo.countByHospitalId(hospitalId))
+                .totalDoctors(doctorService.countByHospitalId(hospitalId))
+                .totalPatients(patientService.countByHospitalId(hospitalId))
                 .totalHospitals(1)
-                .totalAppointments(appointmentRepo.countByHospitalId(hospitalId))
-                .appointmentsToday(appointmentRepo.countByAppointmentDateAndHospitalId(LocalDate.now(), hospitalId))
+                .totalAppointments(appointmentService.countByHospitalId(hospitalId))
+                .appointmentsToday(appointmentService.countByAppointmentDateAndHospitalId(LocalDate.now(), hospitalId))
                 .build();
     }
 
@@ -505,7 +571,7 @@ public class AdminServiceImpl implements AdminService {
         }
 
         HospitalEntity adminHospital = requireAdminHospital();
-        AdminSystemSettingsEntity setting = systemSettingsRepo.findByHospitalIdAndSettingKey(adminHospital.getId(), settingKey)
+        AdminSystemSettingsEntity setting = systemSettingsService.findByHospitalIdAndSettingKey(adminHospital.getId(), settingKey)
                 .orElseGet(() -> {
                     AdminSystemSettingsEntity s = new AdminSystemSettingsEntity();
                     s.setHospital(adminHospital);
@@ -522,7 +588,7 @@ public class AdminServiceImpl implements AdminService {
         }
         setting.setDescription(desc);
 
-        AdminSystemSettingsEntity savedSetting = systemSettingsRepo.save(setting);
+        AdminSystemSettingsEntity savedSetting = systemSettingsService.save(setting);
         logAuditAction("UPDATE_SETTING", "AdminSystemSettingsEntity", savedSetting.getId(), adminId,
                 "Updated setting: " + request.getSettingKey(), adminHospital);
 
@@ -572,7 +638,7 @@ public class AdminServiceImpl implements AdminService {
     @Transactional(readOnly = true)
     public List<SystemSettingsResponse> getAllSystemSettings() {
         HospitalEntity adminHospital = requireAdminHospital();
-        return systemSettingsRepo.findAllByHospitalId(adminHospital.getId()).stream()
+        return systemSettingsService.findAllByHospitalId(adminHospital.getId()).stream()
                 .map(setting -> SystemSettingsResponse.builder()
                         .id(setting.getId())
                         .settingKey(setting.getSettingKey())
@@ -590,7 +656,7 @@ public class AdminServiceImpl implements AdminService {
         if (hospitalId == null) {
             throw new AccessDeniedException("Tenant hospital context is required");
         }
-        Page<AdminAuditLogEntity> logPage = auditLogRepo.searchLogs(hospitalId, search,
+        Page<AdminAuditLogEntity> logPage = auditLogService.searchLogs(hospitalId, search,
                 PageRequest.of(page, size, Sort.by("timestamp").descending()));
 
         List<AuditLogResponse> content = logPage.getContent().stream()
@@ -627,6 +693,45 @@ public class AdminServiceImpl implements AdminService {
                 .details(details)
                 .hospital(hospital)
                 .build();
-        auditLogRepo.save(auditLog);
+        auditLogService.save(auditLog);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<AdminEntity> findAdminEntityByAccountId(UUID accountId) {
+        if (accountId == null) {
+            return Optional.empty();
+        }
+        return adminRepo.findFirstByAccountIdOrderByCreatedAtAsc(accountId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<AdminEntity> findAdminsByHospitalId(UUID hospitalId) {
+        if (hospitalId == null) {
+            return List.of();
+        }
+        return adminRepo.findByHospitalId(hospitalId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<UUID> getActiveHospitalIdsForAdmin(UUID accountId) {
+        if (accountId == null) {
+            return List.of();
+        }
+        return adminRepo.findAllByAccountId(accountId).stream()
+                .filter(admin -> admin.getStatus() == AdminEntity.AdminStatus.ACTIVE)
+                .map(admin -> admin.getHospital().getId())
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean existsByAccountIdAndHospitalId(UUID accountId, UUID hospitalId) {
+        if (accountId == null || hospitalId == null) {
+            return false;
+        }
+        return adminRepo.existsByAccountIdAndHospitalId(accountId, hospitalId);
     }
 }

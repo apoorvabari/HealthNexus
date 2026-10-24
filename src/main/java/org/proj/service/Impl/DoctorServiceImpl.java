@@ -28,6 +28,7 @@ import java.math.BigDecimal;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -41,6 +42,7 @@ public class DoctorServiceImpl implements DoctorService {
         private final DepartmentService departmentService;
         private final DoctorMapper doctorMapper;
         private final TenantContextService tenantContextService;
+        private final org.proj.repository.DoctorHospitalAffiliationRepo affiliationRepo;
 
         @Override
         @Transactional
@@ -241,6 +243,7 @@ public class DoctorServiceImpl implements DoctorService {
                                         "Unable to create doctor profile.",
                                         e);
                 }
+        
         }
 
         @Override
@@ -281,8 +284,7 @@ public class DoctorServiceImpl implements DoctorService {
                                                 "Minimum experience cannot be negative");
                         }
 
-                        UUID currentHospitalId = tenantContextService.getCurrentUserHospitalId();
-                        UUID targetHospitalId = (hospitalId != null) ? hospitalId : currentHospitalId;
+                        UUID targetHospitalId = hospitalId;
 
                         Page<DoctorEntity> doctorPage = doctorRepo.searchDoctorsForPatient(
                                         search,
@@ -372,7 +374,7 @@ public class DoctorServiceImpl implements DoctorService {
                                                 return new DoctorDistancePair(doc, dist);
                                         })
                                         .filter(pair -> pair.distanceKm() <= radiusKm)
-                                        .sorted(Comparator.comparingDouble(DoctorDistancePair::distanceKm))
+                                        .sorted(Comparator.comparingDouble(pair -> pair.distanceKm()))
                                         .toList();
 
                         // 3. Paginate the filtered nearby doctor pairs
@@ -754,6 +756,15 @@ public class DoctorServiceImpl implements DoctorService {
 
         @Override
         @Transactional(readOnly = true)
+        public java.util.Optional<DoctorEntity> findDoctorByIdOrAccountId(UUID id) {
+                if (id == null) {
+                        return java.util.Optional.empty();
+                }
+                return doctorRepo.findById(id).or(() -> doctorRepo.findByAccountId(id));
+        }
+
+        @Override
+        @Transactional(readOnly = true)
         public DoctorEntity findDoctorByIdAndHospitalId(UUID doctorId, UUID hospitalId) {
 
                 if (doctorId == null) {
@@ -769,6 +780,15 @@ public class DoctorServiceImpl implements DoctorService {
                 return doctorRepo.findByIdAndHospitalId(doctorId, hospitalId)
                                 .orElseThrow(() -> new IllegalArgumentException(
                                                 "Doctor not found for this hospital"));
+        }
+
+        @Override
+        @Transactional
+        public Optional<DoctorEntity> findLockedByIdAndHospitalId(UUID doctorId, UUID hospitalId) {
+                if (doctorId == null || hospitalId == null) {
+                        return Optional.empty();
+                }
+                return doctorRepo.findLockedByIdAndHospitalId(doctorId, hospitalId);
         }
 
         @Override
@@ -889,6 +909,18 @@ public class DoctorServiceImpl implements DoctorService {
                                 status);
         }
 
+        @Override
+        @Transactional(readOnly = true)
+        public long countByHospitalId(UUID hospitalId) {
+                return doctorRepo.countByHospitalId(hospitalId);
+        }
+
+        @Override
+        @Transactional(readOnly = true)
+        public long countByHospitalIdAndVerificationStatus(UUID hospitalId, DoctorEntity.VerificationStatus verificationStatus) {
+                return doctorRepo.countByHospitalIdAndVerificationStatus(hospitalId, verificationStatus);
+        }
+
         private UserEntity requireCurrentUser() {
 
                 UserEntity currentUser = SecurityUtils.getCurrentUser();
@@ -938,6 +970,7 @@ public class DoctorServiceImpl implements DoctorService {
                 return hospitalId;
         }
 
+
         private void validateDepartmentHospital(
                         DepartmentEntity department,
                         UUID hospitalId) {
@@ -952,4 +985,155 @@ public class DoctorServiceImpl implements DoctorService {
                                         "Department does not belong to the current hospital");
                 }
         }
+
+        @Override
+        @Transactional(readOnly = true)
+        public java.util.List<DoctorResponse> getDoctorsByDepartment(UUID departmentId) {
+                if (departmentId == null) {
+                        throw new IllegalArgumentException("Department ID is required");
+                }
+                return doctorRepo.findByDepartmentId(departmentId)
+                                .stream()
+                                .filter(d -> d.getAccount() == null || (Boolean.TRUE.equals(d.getAccount().getIsActive()) && !Boolean.TRUE.equals(d.getAccount().getIsDeleted())))
+                                .filter(d -> d.getStatus() == DoctorEntity.DoctorStatus.ACTIVE)
+                                .map(doctorMapper::toResponse)
+                                .toList();
+        }
+
+        @Override
+        @Transactional(readOnly = true)
+        public java.util.List<DoctorResponse> getDoctorsByHospital(UUID hospitalId) {
+                if (hospitalId == null) {
+                        throw new IllegalArgumentException("Hospital ID is required");
+                }
+                return doctorRepo.findByHospitalId(hospitalId)
+                                .stream()
+                                .filter(d -> d.getAccount() == null || (Boolean.TRUE.equals(d.getAccount().getIsActive()) && !Boolean.TRUE.equals(d.getAccount().getIsDeleted())))
+                                .filter(d -> d.getStatus() == DoctorEntity.DoctorStatus.ACTIVE)
+                                .map(doctorMapper::toResponse)
+                                .toList();
+        
+        }
+
+        @Override
+        @Transactional
+        public void switchActiveHospital(UUID doctorId, UUID targetHospitalId) {
+                if (doctorId == null || targetHospitalId == null) {
+                        throw new IllegalArgumentException("Doctor ID and Target Hospital ID are required");
+                }
+
+                DoctorEntity doctor = doctorRepo.findById(doctorId)
+                                .orElseThrow(() -> new jakarta.persistence.EntityNotFoundException("Doctor not found"));
+
+                // Single-Admin Security Boundary Check
+                if (doctor.getAccount() != null) {
+                        boolean isSameAdmin = affiliationRepo.isDoctorAndHospitalUnderSameAdmin(doctor.getAccount().getId(), targetHospitalId);
+                        if (!isSameAdmin) {
+                                throw new AccessDeniedException("Security Violation: Target hospital does not belong to your administrative domain.");
+                        }
+                }
+
+                org.proj.entity.DoctorHospitalAffiliationEntity targetAffiliation = affiliationRepo
+                                .findByDoctorIdAndHospitalId(doctorId, targetHospitalId)
+                                .orElseThrow(() -> new IllegalArgumentException("Doctor is not affiliated with this hospital"));
+
+                if (targetAffiliation.getStatus() != org.proj.entity.DoctorHospitalAffiliationEntity.AffiliationStatus.ACTIVE) {
+                        throw new IllegalStateException("Cannot switch active duty: Affiliation status is " + targetAffiliation.getStatus());
+                }
+
+                // Atomically clear activeDuty for other hospitals and activate the target
+                affiliationRepo.resetActiveDutyForDoctor(doctorId);
+                targetAffiliation.setActiveDuty(true);
+                affiliationRepo.save(targetAffiliation);
+
+                // Update doctor core pointers for seamless backward compatibility
+                doctor.setHospital(targetAffiliation.getHospital());
+                doctor.setDepartment(targetAffiliation.getDepartment());
+                doctorRepo.save(doctor);
+        }
+
+        @Override
+        @Transactional(readOnly = true)
+        public java.util.List<org.proj.dto.DoctorAffiliationResponse> getDoctorAffiliations(UUID doctorId) {
+                if (doctorId == null) {
+                        throw new IllegalArgumentException("Doctor ID is required");
+                }
+                return affiliationRepo.findByDoctorId(doctorId).stream()
+                                .map(this::mapToAffiliationResponse)
+                                .toList();
+        }
+
+        @Override
+        @Transactional
+        public org.proj.dto.DoctorAffiliationResponse addOrUpdateAffiliation(UUID doctorId, org.proj.dto.DoctorAffiliationRequest request) {
+                if (doctorId == null || request == null) {
+                        throw new IllegalArgumentException("Doctor ID and request are required");
+                }
+
+                DoctorEntity doctor = doctorRepo.findById(doctorId)
+                                .orElseThrow(() -> new jakarta.persistence.EntityNotFoundException("Doctor not found"));
+
+                HospitalEntity hospital = hospitalRepo.findById(request.getHospitalId())
+                                .orElseThrow(() -> new jakarta.persistence.EntityNotFoundException("Hospital not found"));
+
+                DepartmentEntity department = departmentRepo.findById(request.getDepartmentId())
+                                .orElseThrow(() -> new jakarta.persistence.EntityNotFoundException("Department not found"));
+
+                if (!hospital.getId().equals(department.getHospital().getId())) {
+                        throw new IllegalArgumentException("Department does not belong to the selected hospital");
+                }
+
+                org.proj.entity.DoctorHospitalAffiliationEntity affiliation = affiliationRepo
+                                .findByDoctorIdAndHospitalId(doctorId, hospital.getId())
+                                .orElse(org.proj.entity.DoctorHospitalAffiliationEntity.builder()
+                                                .doctor(doctor)
+                                                .hospital(hospital)
+                                                .build());
+
+                affiliation.setDepartment(department);
+                if (request.getConsultationFee() != null) {
+                        affiliation.setConsultationFee(request.getConsultationFee());
+                }
+                if (request.getStatus() != null) {
+                        affiliation.setStatus(request.getStatus());
+                }
+                if (Boolean.TRUE.equals(request.getActiveDuty())) {
+                        affiliationRepo.resetActiveDutyForDoctor(doctorId);
+                        affiliation.setActiveDuty(true);
+                        doctor.setHospital(hospital);
+                        doctor.setDepartment(department);
+                        doctorRepo.save(doctor);
+                }
+
+                org.proj.entity.DoctorHospitalAffiliationEntity saved = affiliationRepo.save(affiliation);
+                return mapToAffiliationResponse(saved);
+        }
+
+        @Override
+        @Transactional
+        public void removeAffiliation(UUID affiliationId) {
+                if (affiliationId == null) {
+                        throw new IllegalArgumentException("Affiliation ID is required");
+                }
+                affiliationRepo.deleteById(affiliationId);
+        }
+
+        private org.proj.dto.DoctorAffiliationResponse mapToAffiliationResponse(org.proj.entity.DoctorHospitalAffiliationEntity aff) {
+                return org.proj.dto.DoctorAffiliationResponse.builder()
+                                .id(aff.getId())
+                                .doctorId(aff.getDoctor().getId())
+                                .doctorName(aff.getDoctor().getAccount() != null ? aff.getDoctor().getAccount().getFullName() : null)
+                                .hospitalId(aff.getHospital().getId())
+                                .hospitalName(aff.getHospital().getHospitalName())
+                                .hospitalAddress(aff.getHospital().getAddress())
+                                .hospitalCity(aff.getHospital().getCity())
+                                .departmentId(aff.getDepartment().getId())
+                                .departmentName(aff.getDepartment().getDepartmentName())
+                                .consultationFee(aff.getConsultationFee())
+                                .activeDuty(aff.isActiveDuty())
+                                .status(aff.getStatus())
+                                .createdAt(aff.getCreatedAt())
+                                .build();
+        }
 }
+

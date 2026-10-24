@@ -28,65 +28,114 @@ public class GeneralEnquiryServiceImpl implements GeneralEnquiryService {
     @Override
     @Transactional
     public GeneralEnquiryResponse createEnquiry(GeneralEnquiryRequest request) {
-        UUID hospitalId = tenantContextService.getCurrentUserHospitalId();
-        if (hospitalId == null) {
-            throw new AccessDeniedException("Authenticated user must belong to a hospital to record general enquiries");
+        try {
+            if (request == null) {
+                throw new IllegalArgumentException("General enquiry request cannot be null");
+            }
+            if (request.getInquirerName() == null || request.getInquirerName().trim().isEmpty()) {
+                throw new IllegalArgumentException("Inquirer name is required");
+            }
+            if (request.getContactNumber() == null || request.getContactNumber().trim().isEmpty()) {
+                throw new IllegalArgumentException("Contact number is required");
+            }
+            if (request.getEnquiryText() == null || request.getEnquiryText().trim().isEmpty()) {
+                throw new IllegalArgumentException("Enquiry text is required");
+            }
+
+            UUID hospitalId = tenantContextService.getCurrentUserHospitalId();
+            if (hospitalId == null) {
+                throw new AccessDeniedException("Authenticated user must belong to a hospital to record general enquiries");
+            }
+
+            HospitalEntity hospital = hospitalService.findHospitalById(hospitalId);
+
+            GeneralEnquiryEntity enquiry = GeneralEnquiryEntity.builder()
+                    .hospital(hospital)
+                    .inquirerName(request.getInquirerName().trim())
+                    .contactNumber(request.getContactNumber().trim())
+                    .enquiryText(request.getEnquiryText().trim())
+                    .resolutionNotes(request.getResolutionNotes())
+                    .status(EnquiryStatus.PENDING)
+                    .build();
+
+            GeneralEnquiryEntity saved = generalEnquiryRepo.save(enquiry);
+            return toResponse(saved, "General enquiry created successfully");
+        } catch (AccessDeniedException | IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            String msg = e.getMessage() != null && !e.getMessage().isBlank()
+                    ? e.getMessage()
+                    : "Unable to create general enquiry";
+            throw new RuntimeException(msg, e);
         }
-
-        HospitalEntity hospital = hospitalService.findHospitalById(hospitalId);
-
-        GeneralEnquiryEntity enquiry = GeneralEnquiryEntity.builder()
-                .hospital(hospital)
-                .inquirerName(request.getInquirerName().trim())
-                .contactNumber(request.getContactNumber().trim())
-                .enquiryText(request.getEnquiryText().trim())
-                .resolutionNotes(request.getResolutionNotes())
-                .status(EnquiryStatus.PENDING)
-                .build();
-
-        GeneralEnquiryEntity saved = generalEnquiryRepo.save(enquiry);
-        return toResponse(saved, "General enquiry created successfully");
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<GeneralEnquiryResponse> getHospitalEnquiries() {
-        UUID hospitalId = tenantContextService.getCurrentUserHospitalId();
-        if (hospitalId == null) {
-            throw new AccessDeniedException("Tenant context required to view general enquiries");
-        }
+        try {
+            UUID hospitalId = tenantContextService.getCurrentUserHospitalId();
+            if (hospitalId == null) {
+                throw new AccessDeniedException("Tenant context required to view general enquiries");
+            }
 
-        return generalEnquiryRepo.findByHospitalIdOrderByCreatedAtDesc(hospitalId).stream()
-                .map(e -> toResponse(e, null))
-                .toList();
+            List<GeneralEnquiryEntity> enquiries = generalEnquiryRepo.findByHospitalIdOrderByCreatedAtDesc(hospitalId);
+            return enquiries != null
+                    ? enquiries.stream().map(e -> toResponse(e, null)).toList()
+                    : List.of();
+        } catch (AccessDeniedException | IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            String msg = e.getMessage() != null && !e.getMessage().isBlank()
+                    ? e.getMessage()
+                    : "Unable to fetch general enquiries";
+            throw new RuntimeException(msg, e);
+        }
     }
 
     @Override
     @Transactional
     public GeneralEnquiryResponse updateEnquiryStatus(UUID enquiryId, GeneralEnquiryRequest request) {
-        UUID hospitalId = tenantContextService.getCurrentUserHospitalId();
-        if (hospitalId == null) {
-            throw new AccessDeniedException("Tenant context required to update general enquiries");
+        try {
+            if (enquiryId == null) {
+                throw new IllegalArgumentException("Enquiry ID is required");
+            }
+            if (request == null) {
+                throw new IllegalArgumentException("Update enquiry request cannot be null");
+            }
+
+            UUID hospitalId = tenantContextService.getCurrentUserHospitalId();
+            if (hospitalId == null) {
+                throw new AccessDeniedException("Tenant context required to update general enquiries");
+            }
+
+            GeneralEnquiryEntity enquiry = generalEnquiryRepo.findById(enquiryId)
+                    .orElseThrow(() -> new IllegalArgumentException("Enquiry not found"));
+
+            if (enquiry.getHospital() == null || enquiry.getHospital().getId() == null || !enquiry.getHospital().getId().equals(hospitalId)) {
+                throw new AccessDeniedException("You are not authorized to update an enquiry for another hospital");
+            }
+
+            if (request.getStatus() != null && !request.getStatus().isBlank()) {
+                enquiry.setStatus(EnquiryStatus.valueOf(request.getStatus().trim().toUpperCase()));
+            }
+
+            if (request.getResolutionNotes() != null) {
+                enquiry.setResolutionNotes(request.getResolutionNotes().trim());
+            }
+
+            GeneralEnquiryEntity saved = generalEnquiryRepo.save(enquiry);
+            return toResponse(saved, "General enquiry status updated successfully");
+        } catch (AccessDeniedException | IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            String msg = e.getMessage() != null && !e.getMessage().isBlank()
+                    ? e.getMessage()
+                    : "Unable to update general enquiry";
+            throw new RuntimeException(msg, e);
         }
-
-        GeneralEnquiryEntity enquiry = generalEnquiryRepo.findById(enquiryId)
-                .orElseThrow(() -> new IllegalArgumentException("Enquiry not found"));
-
-        if (enquiry.getHospital() == null || enquiry.getHospital().getId() == null || !enquiry.getHospital().getId().equals(hospitalId)) {
-            throw new AccessDeniedException("You are not authorized to update an enquiry for another hospital");
-        }
-
-        if (request.getStatus() != null && !request.getStatus().isBlank()) {
-            enquiry.setStatus(EnquiryStatus.valueOf(request.getStatus().trim().toUpperCase()));
-        }
-
-        if (request.getResolutionNotes() != null) {
-            enquiry.setResolutionNotes(request.getResolutionNotes().trim());
-        }
-
-        GeneralEnquiryEntity saved = generalEnquiryRepo.save(enquiry);
-        return toResponse(saved, "General enquiry status updated successfully");
     }
+
 
     private GeneralEnquiryResponse toResponse(GeneralEnquiryEntity entity, String message) {
         return GeneralEnquiryResponse.builder()
