@@ -61,6 +61,7 @@ public class SecurityConfig {
                                                 "/api/users/captcha",
                                                 "/api/hospitals/public",
                                                 "/api/departments/public",
+                                                "/api/public/twilio/**",
                                                 "/ws-healthnexus",
                                                 "/ws-healthnexus/**")
                                 .cors(Customizer.withDefaults())

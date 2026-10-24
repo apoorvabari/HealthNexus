@@ -9,6 +9,8 @@ import org.proj.repository.AppointmentRepo;
 import org.proj.repository.QueueRepo;
 import org.proj.service.NotificationService;
 import org.proj.service.ReminderSchedulerService;
+import org.proj.service.communication.TwilioCommunicationService;
+import org.proj.service.communication.VoiceService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -29,6 +31,8 @@ public class ReminderSchedulerServiceImpl implements ReminderSchedulerService {
     private final AppointmentRepo appointmentRepo;
     private final QueueRepo queueRepo;
     private final NotificationService notificationService;
+    private final TwilioCommunicationService twilioService;
+    private final VoiceService voiceService;
 
     @Value("${reminder.appointment.minutes-before:60}")
     private int appointmentReminderMinutes;
@@ -119,6 +123,26 @@ public class ReminderSchedulerServiceImpl implements ReminderSchedulerService {
                             + ".",
                     NotificationType.APPOINTMENT_REMINDER
             );
+
+            // Asynchronous External Twilio Communication (SMS / Automated Voice Call)
+            if (appointment.getPatient().getAccount().getPhoneNumber() != null
+                    && !appointment.getPatient().getAccount().getPhoneNumber().isBlank()) {
+                String patientPhone = appointment.getPatient().getAccount().getPhoneNumber();
+                String reminderText = "Hello. This is an automated reminder from HealthNexus regarding your upcoming doctor appointment "
+                        + appointment.getAppointmentNumber() + " scheduled on "
+                        + appointment.getAppointmentDate() + " at "
+                        + appointment.getAppointmentTime() + ".";
+
+                // For reminders within 2 hours, dispatch automated Voice Call with TwiML speech
+                if (minutesRemaining <= 120 && voiceService != null) {
+                    voiceService.makeVoiceCallAsync(patientPhone, reminderText);
+                }
+
+                // Dispatch SMS reminder
+                if (twilioService != null) {
+                    twilioService.sendSmsAsync(patientPhone, reminderText);
+                }
+            }
 
             appointment.setAppointmentReminderSentAt(LocalDateTime.now(zoneId));
             appointmentRepo.save(appointment);

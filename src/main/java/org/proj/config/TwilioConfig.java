@@ -30,6 +30,10 @@ public class TwilioConfig {
     private String messagingServiceSid;
 
     @Getter
+    @Value("${twilio.callback-base-url:http://localhost:8080}")
+    private String callbackBaseUrl;
+
+    @Getter
     @Value("${twilio.enabled:false}")
     private boolean enabled;
 

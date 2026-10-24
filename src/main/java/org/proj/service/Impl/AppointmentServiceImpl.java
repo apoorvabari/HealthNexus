@@ -1548,12 +1548,15 @@ public class AppointmentServiceImpl implements AppointmentService {
                     NotificationType.APPOINTMENT_BOOKED
             );
 
-            // Twilio SMS Alert (Non-blocking, graceful fallback)
+            // Twilio SMS & WhatsApp Confirmation (Non-blocking, graceful fallback)
+            String hospitalName = appointment.getHospital() != null ? appointment.getHospital().getHospitalName() : "HealthNexus Clinic";
             String patientPhone = appointment.getPatient().getAccount().getPhoneNumber();
             if (patientPhone != null && !patientPhone.isBlank() && twilioService != null) {
-                String smsBody = String.format("HealthNexus: Appointment #%s with Dr. %s is confirmed for %s at %s.",
-                        appointment.getAppointmentNumber(), doctorName, appointment.getAppointmentDate(), appointment.getAppointmentTime());
-                twilioService.sendSmsAsync(patientPhone, smsBody);
+                String confirmationMessage = String.format(
+                        "HealthNexus Confirmation: Appointment #%s with Dr. %s at %s is confirmed for %s at %s.",
+                        appointment.getAppointmentNumber(), doctorName, hospitalName, appointment.getAppointmentDate(), appointment.getAppointmentTime());
+                twilioService.sendSmsAsync(patientPhone, confirmationMessage);
+                twilioService.sendWhatsAppAsync(patientPhone, confirmationMessage);
             }
         }
         if (appointment.getDoctor() != null && appointment.getDoctor().getAccount() != null) {
